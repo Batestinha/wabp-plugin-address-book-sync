@@ -19,10 +19,11 @@ export const addressBookSyncManifest: PluginManifest = {
   backgroundJobs: [],
   cancellation: { workflows: [] },
   assistant: {
-    summary: 'Automatically saves unknown members to the WhatsApp address book when they join, are added, or are approved into managed groups.',
+    summary: 'Automatically saves unknown arriving members to the WhatsApp address book and supports explicit backfill for current group participants.',
     useCases: [
       'Explain whether unknown joining members will be saved to the address book.',
       'Summarize the configured suffix and event triggers.',
+      'Backfill unknown current group participants after enabling the plugin.',
       'Describe duplicate suppression for repeated participant-change events.'
     ],
     prerequisites: [
@@ -31,7 +32,7 @@ export const addressBookSyncManifest: PluginManifest = {
       'The runtime must provide live group participant and contact lookup helpers.'
     ],
     limitations: [
-      'Only users present in participant-change events are considered.',
+      'Automatic saves only consider participant-change events; current participants require an explicit backfill action.',
       'WhatsApp clients may not reflect app-state contact saves uniformly across devices.'
     ]
   }

@@ -2,6 +2,8 @@ import { defineControl } from '../../../platform/operatorConsole/controlCatalog/
 import type { ControlDescriptor, ControlSchemaMetadata, ControlUiHint } from '../../../platform/operatorConsole/controlCatalog/types';
 import { DEFAULT_ADDRESS_BOOK_SYNC_SUFFIX } from './config';
 
+const ADDRESS_BOOK_SYNC_BACKFILL_ACTION_ID = 'official.address-book-sync.backfill';
+
 function control(
   path: string,
   label: string,
@@ -30,7 +32,7 @@ function control(
     sensitivity: { sensitive: false, redact: 'none' },
     auditAction: 'operator_console.plugin_config.update',
     relatedCommandIds: [],
-    relatedActionIds: []
+    relatedActionIds: [ADDRESS_BOOK_SYNC_BACKFILL_ACTION_ID]
   });
 }
 
