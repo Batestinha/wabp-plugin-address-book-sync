@@ -11,6 +11,21 @@ export const addressBookSyncManifest: PluginManifest = {
   descriptionKey: 'official.address-book-sync.description',
   defaultMessages: addressBookSyncMessages,
   commands: [],
+  help: {
+    featureId: 'address-book',
+    titleKey: 'official.address-book-sync.help.feature.title',
+    summaryKey: 'official.address-book-sync.help.feature.summary',
+    order: 80,
+    aliases: ['contacts', 'address book'],
+    topics: [{
+      topicId: 'sync-address-book',
+      titleKey: 'official.address-book-sync.help.sync.title',
+      summaryKey: 'official.address-book-sync.help.sync.summary',
+      instructionKeys: ['official.address-book-sync.help.sync.instruction'],
+      keywords: ['contacts', 'join', 'member', 'sync'],
+      availability: { invocation: 'either', permission: 'plugin.configure' }
+    }]
+  },
   eventSubscriptions: ['participant.change'],
   requiredPermissions: ['plugin.configure'],
   requiredBotCapabilities: [],
