@@ -1,4 +1,4 @@
-import type { PrivateRecipientResolution } from '../../../platform/identity/privateRecipientResolver';
+import type { IdentityAddressResolution } from '../../../platform/identity/identityAddressService';
 import type { PluginAction } from '../../../platform/pluginRuntime/runtime/pluginActionTypes';
 import type { PluginEphemeralStore } from '../../../platform/pluginRuntime/runtime/pluginEphemeralStore';
 import type { GroupParticipant } from '../../../platform/transport/transportTypes';
@@ -21,7 +21,7 @@ export interface AddressBookSyncTarget {
 export interface AddressBookSyncRuntime {
   ephemeralStore: PluginEphemeralStore;
   isKnownContact(wid: string): Promise<boolean>;
-  resolvePrivateRecipient?(wid: string): Promise<PrivateRecipientResolution>;
+  resolveIdentityAddress(wid: string): Promise<IdentityAddressResolution>;
 }
 
 export interface AddressBookSyncPlanInput {
@@ -124,7 +124,7 @@ function addSkipped(
   actions: PluginAction[],
   results: AddressBookSyncPlanResult[],
   eventUserWid: string,
-  recipient: PrivateRecipientResolution,
+  recipient: IdentityAddressResolution,
   reason: AddressBookSyncSkipReason
 ): void {
   if (input.includeSkipAuditActions) {
@@ -142,7 +142,7 @@ function addSkipped(
 
 async function isDuplicateSyncAttempt(
   input: AddressBookSyncPlanInput,
-  recipient: PrivateRecipientResolution
+  recipient: IdentityAddressResolution
 ): Promise<boolean> {
   const key = saveDedupeKey(input.target, recipient);
   if (input.dryRun) {
@@ -179,7 +179,7 @@ function participantMap(participants: GroupParticipant[]): Map<string, GroupPart
 
 function participantForRecipient(
   participantsByWid: Map<string, GroupParticipant>,
-  recipient: PrivateRecipientResolution
+  recipient: IdentityAddressResolution
 ): GroupParticipant | undefined {
   for (const wid of recipientAliases(recipient)) {
     const participant = participantsByWid.get(wid);
@@ -193,24 +193,13 @@ function participantForRecipient(
 async function resolveRecipient(
   runtime: AddressBookSyncRuntime,
   userWid: string
-): Promise<PrivateRecipientResolution> {
-  return runtime.resolvePrivateRecipient?.(userWid) ?? unresolvedRecipient(userWid);
-}
-
-function unresolvedRecipient(userWid: string): PrivateRecipientResolution {
-  return {
-    originalWid: userWid,
-    chatId: userWid,
-    deliveryChatIds: userWid ? [userWid] : [],
-    canonicalWid: userWid,
-    aliases: userWid ? [userWid] : [],
-    dedupeKey: `wid:${userWid}`
-  };
+): Promise<IdentityAddressResolution> {
+  return runtime.resolveIdentityAddress(userWid);
 }
 
 async function isKnownRecipient(
   runtime: AddressBookSyncRuntime,
-  recipient: PrivateRecipientResolution
+  recipient: IdentityAddressResolution
 ): Promise<boolean> {
   for (const wid of recipientAliases(recipient)) {
     if (await runtime.isKnownContact(wid)) {
@@ -220,22 +209,17 @@ async function isKnownRecipient(
   return false;
 }
 
-function preferredSaveWid(recipient: PrivateRecipientResolution): string {
-  return recipient.deliveryChatIds.find((wid) => wid.endsWith('@c.us')) ??
-    recipient.aliases.find((wid) => wid.endsWith('@c.us')) ??
-    recipient.deliveryChatIds.find((wid) => wid.endsWith('@s.whatsapp.net')) ??
-    recipient.aliases.find((wid) => wid.endsWith('@s.whatsapp.net')) ??
-    recipient.deliveryChatIds.find((wid) => wid.endsWith('@lid')) ??
-    recipient.aliases.find((wid) => wid.endsWith('@lid')) ??
-    recipient.canonicalWid;
+function preferredSaveWid(recipient: IdentityAddressResolution): string {
+  return recipient.addressBookWid;
 }
 
-function recipientAliases(recipient: PrivateRecipientResolution): string[] {
+function recipientAliases(recipient: IdentityAddressResolution): string[] {
   return uniqueWids([
     recipient.originalWid,
-    recipient.chatId,
+    recipient.deliveryChatId,
     recipient.canonicalWid,
-    ...recipient.deliveryChatIds,
+    recipient.mentionWid,
+    recipient.addressBookWid,
     ...recipient.aliases
   ]);
 }
@@ -249,13 +233,13 @@ function appendSuffix(label: string, suffix: string): string {
   return `${normalizedLabel} ${normalizedSuffix}`;
 }
 
-function saveDedupeKey(target: AddressBookSyncTarget, recipient: PrivateRecipientResolution): string {
+function saveDedupeKey(target: AddressBookSyncTarget, recipient: IdentityAddressResolution): string {
   return `address-book-sync:save:${target.scopeId}:${target.chatId}:${recipient.dedupeKey}`;
 }
 
 function auditSkipped(
   target: AddressBookSyncTarget,
-  recipient: PrivateRecipientResolution,
+  recipient: IdentityAddressResolution,
   reason: string
 ): PluginAction {
   return {

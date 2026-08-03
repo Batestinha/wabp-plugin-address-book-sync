@@ -25,7 +25,7 @@ export function createAddressBookSyncHooks(context: PluginRuntimeContext): Plugi
         runtime: {
           ephemeralStore: context.ephemeralStore,
           isKnownContact: context.isKnownContact,
-          ...(context.resolvePrivateRecipient ? { resolvePrivateRecipient: context.resolvePrivateRecipient } : {})
+          resolveIdentityAddress: requiredIdentityAddressResolver(context.resolveIdentityAddress)
         },
         target: {
           scopeId: event.scopeId,
@@ -43,6 +43,13 @@ export function createAddressBookSyncHooks(context: PluginRuntimeContext): Plugi
       return plan.actions;
     }
   };
+}
+
+function requiredIdentityAddressResolver(
+  resolver: PluginRuntimeContext['resolveIdentityAddress']
+): NonNullable<PluginRuntimeContext['resolveIdentityAddress']> {
+  if (!resolver) throw new Error('Authoritative identity address service is unavailable.');
+  return resolver;
 }
 
 function shouldSaveForEvent(event: PluginParticipantChangeEvent, config: AddressBookSyncConfig): boolean {
