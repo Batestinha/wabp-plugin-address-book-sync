@@ -1,6 +1,7 @@
-import type { IdentityAddressResolution } from '../../../platform/identity/identityAddressService';
+import type { StableIdentityAddressResolution } from '../../../platform/identity/identityAddressService';
 import type { PluginAction } from '../../../platform/pluginRuntime/runtime/pluginActionTypes';
 import type { PluginEphemeralStore } from '../../../platform/pluginRuntime/runtime/pluginEphemeralStore';
+import type { PluginParticipantIdentity } from '../../../platform/pluginRuntime/types';
 import type { GroupParticipant } from '../../../platform/transport/transportTypes';
 import type { AddressBookSyncConfig } from './config';
 
@@ -21,7 +22,7 @@ export interface AddressBookSyncTarget {
 export interface AddressBookSyncRuntime {
   ephemeralStore: PluginEphemeralStore;
   isKnownContact(wid: string): Promise<boolean>;
-  resolveIdentityAddress(wid: string): Promise<IdentityAddressResolution>;
+  resolveIdentityAddress(wid: string): Promise<StableIdentityAddressResolution>;
 }
 
 export interface AddressBookSyncPlanInput {
@@ -29,19 +30,19 @@ export interface AddressBookSyncPlanInput {
   target: AddressBookSyncTarget;
   config: AddressBookSyncConfig;
   participants: GroupParticipant[];
-  targetWids: string[];
-  botWids?: string[] | undefined;
+  targetIdentities: PluginParticipantIdentity[];
+  botIdentityIds?: string[] | undefined;
   dryRun?: boolean | undefined;
   includeSkipAuditActions?: boolean | undefined;
 }
 
 export interface AddressBookSyncPlanResult {
-  eventUserWid: string;
+  identityId: string;
+  sourceWid: string;
   status: 'would_save' | 'save_requested' | 'skipped';
   saveWid?: string | undefined;
   displayName?: string | undefined;
   canonicalWid?: string | undefined;
-  aliases?: string[] | undefined;
   reason?: AddressBookSyncSkipReason | undefined;
 }
 
@@ -58,39 +59,38 @@ export interface AddressBookSyncPlan {
 }
 
 export async function planAddressBookSync(input: AddressBookSyncPlanInput): Promise<AddressBookSyncPlan> {
-  const participantsByWid = participantMap(input.participants);
-  const botRecipients = new Set(uniqueWids(input.botWids ?? []));
+  const participantsByIdentityId = await participantMap(input.runtime, input.participants);
+  const botIdentityIds = new Set(input.botIdentityIds ?? []);
   const actions: PluginAction[] = [];
   const results: AddressBookSyncPlanResult[] = [];
 
-  for (const eventUserWid of uniqueWids(input.targetWids)) {
-    const recipient = await resolveRecipient(input.runtime, eventUserWid);
-    if (recipientAliases(recipient).some((alias) => botRecipients.has(alias))) {
-      addSkipped(input, actions, results, eventUserWid, recipient, 'self-recipient');
+  for (const recipient of uniqueIdentities(input.targetIdentities)) {
+    if (botIdentityIds.has(recipient.identityId)) {
+      addSkipped(input, actions, results, recipient, 'self-recipient');
       continue;
     }
     if (await isKnownRecipient(input.runtime, recipient)) {
-      addSkipped(input, actions, results, eventUserWid, recipient, 'known-contact');
+      addSkipped(input, actions, results, recipient, 'known-contact');
       continue;
     }
 
     const saveWid = preferredSaveWid(recipient);
-    const participant = participantForRecipient(participantsByWid, recipient);
+    const participant = participantsByIdentityId.get(recipient.identityId);
     const displayName = appendSuffix(participant?.displayName?.trim() || saveWid, input.config.suffix);
     const duplicate = await isDuplicateSyncAttempt(input, recipient);
     if (duplicate) {
-      addSkipped(input, actions, results, eventUserWid, recipient, 'duplicate-event');
+      addSkipped(input, actions, results, recipient, 'duplicate-event');
       continue;
     }
 
     if (input.dryRun) {
       results.push({
-        eventUserWid,
+        identityId: recipient.identityId,
+        sourceWid: recipient.sourceWid,
         status: 'would_save',
         saveWid,
         displayName,
-        canonicalWid: recipient.canonicalWid,
-        aliases: recipient.aliases
+        canonicalWid: recipient.canonicalWid
       });
       continue;
     }
@@ -103,12 +103,12 @@ export async function planAddressBookSync(input: AddressBookSyncPlanInput): Prom
       reason: ADDRESS_BOOK_SYNC_PLUGIN_ID
     });
     results.push({
-      eventUserWid,
+      identityId: recipient.identityId,
+      sourceWid: recipient.sourceWid,
       status: 'save_requested',
       saveWid,
       displayName,
-      canonicalWid: recipient.canonicalWid,
-      aliases: recipient.aliases
+      canonicalWid: recipient.canonicalWid
     });
   }
 
@@ -123,26 +123,25 @@ function addSkipped(
   input: AddressBookSyncPlanInput,
   actions: PluginAction[],
   results: AddressBookSyncPlanResult[],
-  eventUserWid: string,
-  recipient: IdentityAddressResolution,
+  recipient: PluginParticipantIdentity,
   reason: AddressBookSyncSkipReason
 ): void {
   if (input.includeSkipAuditActions) {
     actions.push(auditSkipped(input.target, recipient, reason));
   }
   results.push({
-    eventUserWid,
+    identityId: recipient.identityId,
+    sourceWid: recipient.sourceWid,
     status: 'skipped',
     reason,
     saveWid: preferredSaveWid(recipient),
-    canonicalWid: recipient.canonicalWid,
-    aliases: recipient.aliases
+    canonicalWid: recipient.canonicalWid
   });
 }
 
 async function isDuplicateSyncAttempt(
   input: AddressBookSyncPlanInput,
-  recipient: IdentityAddressResolution
+  recipient: PluginParticipantIdentity
 ): Promise<boolean> {
   const key = saveDedupeKey(input.target, recipient);
   if (input.dryRun) {
@@ -169,59 +168,30 @@ function summarize(results: AddressBookSyncPlanResult[]): AddressBookSyncPlan['s
   };
 }
 
-function participantMap(participants: GroupParticipant[]): Map<string, GroupParticipant> {
-  return new Map(
-    participants
-      .filter((participant) => participant.wid.trim())
-      .map((participant) => [participant.wid, participant])
-  );
-}
-
-function participantForRecipient(
-  participantsByWid: Map<string, GroupParticipant>,
-  recipient: IdentityAddressResolution
-): GroupParticipant | undefined {
-  for (const wid of recipientAliases(recipient)) {
-    const participant = participantsByWid.get(wid);
-    if (participant) {
-      return participant;
+async function participantMap(
+  runtime: AddressBookSyncRuntime,
+  participants: GroupParticipant[]
+): Promise<Map<string, GroupParticipant>> {
+  const byIdentityId = new Map<string, GroupParticipant>();
+  for (const participant of participants) {
+    if (!participant.wid.trim()) continue;
+    const identity = await runtime.resolveIdentityAddress(participant.wid);
+    if (!byIdentityId.has(identity.identityId)) {
+      byIdentityId.set(identity.identityId, participant);
     }
   }
-  return undefined;
-}
-
-async function resolveRecipient(
-  runtime: AddressBookSyncRuntime,
-  userWid: string
-): Promise<IdentityAddressResolution> {
-  return runtime.resolveIdentityAddress(userWid);
+  return byIdentityId;
 }
 
 async function isKnownRecipient(
   runtime: AddressBookSyncRuntime,
-  recipient: IdentityAddressResolution
+  recipient: PluginParticipantIdentity
 ): Promise<boolean> {
-  for (const wid of recipientAliases(recipient)) {
-    if (await runtime.isKnownContact(wid)) {
-      return true;
-    }
-  }
-  return false;
+  return runtime.isKnownContact(recipient.addressBookWid);
 }
 
-function preferredSaveWid(recipient: IdentityAddressResolution): string {
+function preferredSaveWid(recipient: PluginParticipantIdentity): string {
   return recipient.addressBookWid;
-}
-
-function recipientAliases(recipient: IdentityAddressResolution): string[] {
-  return uniqueWids([
-    recipient.originalWid,
-    recipient.deliveryChatId,
-    recipient.canonicalWid,
-    recipient.mentionWid,
-    recipient.addressBookWid,
-    ...recipient.aliases
-  ]);
 }
 
 function appendSuffix(label: string, suffix: string): string {
@@ -233,13 +203,13 @@ function appendSuffix(label: string, suffix: string): string {
   return `${normalizedLabel} ${normalizedSuffix}`;
 }
 
-function saveDedupeKey(target: AddressBookSyncTarget, recipient: IdentityAddressResolution): string {
-  return `address-book-sync:save:${target.scopeId}:${target.chatId}:${recipient.dedupeKey}`;
+function saveDedupeKey(target: AddressBookSyncTarget, recipient: PluginParticipantIdentity): string {
+  return `address-book-sync:save:${target.scopeId}:${target.chatId}:identity:${recipient.identityId}`;
 }
 
 function auditSkipped(
   target: AddressBookSyncTarget,
-  recipient: IdentityAddressResolution,
+  recipient: PluginParticipantIdentity,
   reason: string
 ): PluginAction {
   return {
@@ -251,15 +221,21 @@ function auditSkipped(
       chatId: target.chatId,
       ...(target.eventId ? { eventId: target.eventId } : {}),
       ...(target.participantAction ? { participantAction: target.participantAction } : {}),
+      identityId: recipient.identityId,
       userWid: recipient.canonicalWid,
-      eventUserWid: recipient.originalWid,
-      saveWid: preferredSaveWid(recipient),
-      aliases: recipient.aliases
+      sourceWid: recipient.sourceWid,
+      saveWid: preferredSaveWid(recipient)
     },
     metadataJson: { reason }
   };
 }
 
-function uniqueWids(wids: string[]): string[] {
-  return [...new Set(wids.map((wid) => wid.trim()).filter(Boolean))];
+function uniqueIdentities(identities: PluginParticipantIdentity[]): PluginParticipantIdentity[] {
+  const byIdentityId = new Map<string, PluginParticipantIdentity>();
+  for (const identity of identities) {
+    if (!byIdentityId.has(identity.identityId)) {
+      byIdentityId.set(identity.identityId, identity);
+    }
+  }
+  return [...byIdentityId.values()];
 }

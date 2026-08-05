@@ -1,6 +1,7 @@
 import type { PluginAction } from '../../../platform/pluginRuntime/runtime/pluginActionTypes';
 import type { PluginRuntimeContext } from '../../../platform/pluginRuntime/runtime/pluginRuntimeContext';
 import type { PluginParticipantChangeEvent, PluginRuntimeHooks } from '../../../platform/pluginRuntime/types';
+import type { StableIdentityAddressResolution } from '../../../platform/identity/identityAddressService';
 import { parseAddressBookSyncConfig, type AddressBookSyncConfig } from './config';
 import { planAddressBookSync } from './sync';
 
@@ -9,7 +10,10 @@ const pluginId = 'official.address-book-sync';
 export function createAddressBookSyncHooks(context: PluginRuntimeContext): PluginRuntimeHooks {
   return {
     async onParticipantChange(event) {
-      const config = parseAddressBookSyncConfig(await context.configFor(event.scopeId, event.actorWid));
+      const config = parseAddressBookSyncConfig(await context.configFor(
+        event.scopeId,
+        event.actorIdentity?.identityId
+      ));
       if (!config.enabled || !shouldSaveForEvent(event, config)) {
         return;
       }
@@ -35,8 +39,8 @@ export function createAddressBookSyncHooks(context: PluginRuntimeContext): Plugi
         },
         config,
         participants,
-        targetWids: event.affectedWids,
-        botWids: botRecipientWids(event),
+        targetIdentities: event.affectedIdentities,
+        botIdentityIds: event.botIdentityIds,
         includeSkipAuditActions: true
       });
 
@@ -47,9 +51,15 @@ export function createAddressBookSyncHooks(context: PluginRuntimeContext): Plugi
 
 function requiredIdentityAddressResolver(
   resolver: PluginRuntimeContext['resolveIdentityAddress']
-): NonNullable<PluginRuntimeContext['resolveIdentityAddress']> {
+): (wid: string) => Promise<StableIdentityAddressResolution> {
   if (!resolver) throw new Error('Authoritative identity address service is unavailable.');
-  return resolver;
+  return async (wid) => {
+    const resolution = await resolver(wid);
+    if (!resolution.identityId) {
+      throw new Error(`Authoritative identity is unavailable for WhatsApp address ${wid}.`);
+    }
+    return resolution as StableIdentityAddressResolution;
+  };
 }
 
 function shouldSaveForEvent(event: PluginParticipantChangeEvent, config: AddressBookSyncConfig): boolean {
@@ -67,13 +77,6 @@ function shouldSaveForEvent(event: PluginParticipantChangeEvent, config: Address
 
 function exemptGroupChatIds(config: AddressBookSyncConfig): Set<string> {
   return new Set(config.exemptGroupChatIds.map((chatId) => chatId.trim()).filter(Boolean));
-}
-
-function botRecipientWids(event: PluginParticipantChangeEvent): string[] {
-  return [
-    ...(event.botWid ? [event.botWid] : []),
-    ...(event.botWids ?? [])
-  ].map((wid) => wid.trim()).filter(Boolean);
 }
 
 function auditSkipped(
