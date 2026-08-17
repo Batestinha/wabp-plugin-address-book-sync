@@ -2,7 +2,7 @@ import type { StableIdentityAddressResolution } from '../../../platform/identity
 import type { PluginAction } from '../../../platform/pluginRuntime/runtime/pluginActionTypes';
 import type { PluginEphemeralStore } from '../../../platform/pluginRuntime/runtime/pluginEphemeralStore';
 import type { PluginParticipantIdentity } from '../../../platform/pluginRuntime/types';
-import type { GroupParticipant } from '../../../platform/transport/transportTypes';
+import type { WhatsAppUserProfileNames } from '../../../platform/transport/transportTypes';
 import type { AddressBookSyncConfig } from './config';
 
 export const ADDRESS_BOOK_SYNC_PLUGIN_ID = 'official.address-book-sync';
@@ -10,7 +10,10 @@ export const ADDRESS_BOOK_SYNC_PLUGIN_ID = 'official.address-book-sync';
 export type AddressBookSyncSkipReason =
   | 'self-recipient'
   | 'known-contact'
-  | 'duplicate-event';
+  | 'duplicate-event'
+  | 'profile-name-unavailable';
+
+export type AddressBookSyncNameSource = 'push-name' | 'username' | 'phone-number';
 
 export interface AddressBookSyncTarget {
   scopeId: string;
@@ -22,6 +25,7 @@ export interface AddressBookSyncTarget {
 export interface AddressBookSyncRuntime {
   ephemeralStore: PluginEphemeralStore;
   isKnownContact(wid: string): Promise<boolean>;
+  getUserProfileNames(wids: string[]): Promise<WhatsAppUserProfileNames[]>;
   resolveIdentityAddress(wid: string): Promise<StableIdentityAddressResolution>;
 }
 
@@ -29,7 +33,6 @@ export interface AddressBookSyncPlanInput {
   runtime: AddressBookSyncRuntime;
   target: AddressBookSyncTarget;
   config: AddressBookSyncConfig;
-  participants: GroupParticipant[];
   targetIdentities: PluginParticipantIdentity[];
   botIdentityIds?: string[] | undefined;
   dryRun?: boolean | undefined;
@@ -41,7 +44,8 @@ export interface AddressBookSyncPlanResult {
   sourceWid: string;
   status: 'would_save' | 'save_requested' | 'skipped';
   saveWid?: string | undefined;
-  displayName?: string | undefined;
+  contactName?: string | undefined;
+  nameSource?: AddressBookSyncNameSource | undefined;
   canonicalWid?: string | undefined;
   reason?: AddressBookSyncSkipReason | undefined;
 }
@@ -59,12 +63,20 @@ export interface AddressBookSyncPlan {
 }
 
 export async function planAddressBookSync(input: AddressBookSyncPlanInput): Promise<AddressBookSyncPlan> {
-  const participantsByIdentityId = await participantMap(input.runtime, input.participants);
   const botIdentityIds = new Set(input.botIdentityIds ?? []);
   const actions: PluginAction[] = [];
   const results: AddressBookSyncPlanResult[] = [];
+  const recipients = uniqueIdentities(input.targetIdentities);
+  const [profiles, resolutions] = await Promise.all([
+    input.runtime.getUserProfileNames(recipients.map((recipient) => recipient.addressBookWid)),
+    Promise.all(recipients.map((recipient) => input.runtime.resolveIdentityAddress(recipient.addressBookWid)))
+  ]);
+  const profilesByWid = new Map(profiles.map((profile) => [normalizeProfileWid(profile.wid), profile]));
+  const resolutionsByIdentityId = new Map(
+    recipients.map((recipient, index) => [recipient.identityId, resolutions[index]!])
+  );
 
-  for (const recipient of uniqueIdentities(input.targetIdentities)) {
+  for (const recipient of recipients) {
     if (botIdentityIds.has(recipient.identityId)) {
       addSkipped(input, actions, results, recipient, 'self-recipient');
       continue;
@@ -75,8 +87,15 @@ export async function planAddressBookSync(input: AddressBookSyncPlanInput): Prom
     }
 
     const saveWid = preferredSaveWid(recipient);
-    const participant = participantsByIdentityId.get(recipient.identityId);
-    const displayName = appendSuffix(participant?.displayName?.trim() || saveWid, input.config.suffix);
+    const selectedName = selectAddressBookContactName(
+      profilesByWid.get(normalizeProfileWid(saveWid)),
+      resolutionsByIdentityId.get(recipient.identityId)?.phoneNumber
+    );
+    if (!selectedName) {
+      addSkipped(input, actions, results, recipient, 'profile-name-unavailable');
+      continue;
+    }
+    const contactName = appendAddressBookSuffix(selectedName.value, input.config.suffix);
     const duplicate = await isDuplicateSyncAttempt(input, recipient);
     if (duplicate) {
       addSkipped(input, actions, results, recipient, 'duplicate-event');
@@ -89,7 +108,8 @@ export async function planAddressBookSync(input: AddressBookSyncPlanInput): Prom
         sourceWid: recipient.sourceWid,
         status: 'would_save',
         saveWid,
-        displayName,
+        contactName,
+        nameSource: selectedName.source,
         canonicalWid: recipient.canonicalWid
       });
       continue;
@@ -98,7 +118,7 @@ export async function planAddressBookSync(input: AddressBookSyncPlanInput): Prom
     actions.push({
       type: 'contact.saveToAddressBook',
       wid: saveWid,
-      displayName,
+      contactName,
       sourceGroupWid: input.target.chatId,
       reason: ADDRESS_BOOK_SYNC_PLUGIN_ID
     });
@@ -107,7 +127,8 @@ export async function planAddressBookSync(input: AddressBookSyncPlanInput): Prom
       sourceWid: recipient.sourceWid,
       status: 'save_requested',
       saveWid,
-      displayName,
+      contactName,
+      nameSource: selectedName.source,
       canonicalWid: recipient.canonicalWid
     });
   }
@@ -168,21 +189,6 @@ function summarize(results: AddressBookSyncPlanResult[]): AddressBookSyncPlan['s
   };
 }
 
-async function participantMap(
-  runtime: AddressBookSyncRuntime,
-  participants: GroupParticipant[]
-): Promise<Map<string, GroupParticipant>> {
-  const byIdentityId = new Map<string, GroupParticipant>();
-  for (const participant of participants) {
-    if (!participant.wid.trim()) continue;
-    const identity = await runtime.resolveIdentityAddress(participant.wid);
-    if (!byIdentityId.has(identity.identityId)) {
-      byIdentityId.set(identity.identityId, participant);
-    }
-  }
-  return byIdentityId;
-}
-
 async function isKnownRecipient(
   runtime: AddressBookSyncRuntime,
   recipient: PluginParticipantIdentity
@@ -194,7 +200,43 @@ function preferredSaveWid(recipient: PluginParticipantIdentity): string {
   return recipient.addressBookWid;
 }
 
-function appendSuffix(label: string, suffix: string): string {
+export function selectAddressBookContactName(
+  profile: WhatsAppUserProfileNames | undefined,
+  phoneNumber: string | undefined
+): { value: string; source: AddressBookSyncNameSource } | undefined {
+  const pushName = cleanProfileValue(profile?.pushName);
+  if (pushName) {
+    return { value: pushName, source: 'push-name' };
+  }
+  const username = formatWhatsAppUsername(profile?.username);
+  if (username) {
+    return { value: username, source: 'username' };
+  }
+  const normalizedPhoneNumber = phoneNumber?.trim();
+  if (normalizedPhoneNumber && /^\d{7,15}$/.test(normalizedPhoneNumber)) {
+    return { value: `+${normalizedPhoneNumber}`, source: 'phone-number' };
+  }
+  return undefined;
+}
+
+function cleanProfileValue(value: string | undefined): string | undefined {
+  const normalized = value?.trim();
+  return normalized || undefined;
+}
+
+function formatWhatsAppUsername(value: string | undefined): string | undefined {
+  const normalized = cleanProfileValue(value)?.replace(/^@+/, '').trim();
+  return normalized ? `@${normalized}` : undefined;
+}
+
+function normalizeProfileWid(wid: string): string {
+  return wid.trim()
+    .replace(/^([^:@]+):\d+@(lid|c\.us|s\.whatsapp\.net)$/i, '$1@$2')
+    .replace(/@s\.whatsapp\.net$/i, '@c.us')
+    .toLowerCase();
+}
+
+export function appendAddressBookSuffix(label: string, suffix: string): string {
   const normalizedLabel = label.trim();
   const normalizedSuffix = suffix.trim();
   if (!normalizedSuffix || normalizedLabel.endsWith(normalizedSuffix)) {

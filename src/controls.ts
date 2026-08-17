@@ -41,7 +41,7 @@ export const addressBookSyncControls: ControlDescriptor[] = [
   control('saveOnJoin', 'Direct joins', 'Save contacts when WhatsApp reports a direct join.', 20, { type: 'boolean' }, { widget: 'toggle' }, true),
   control('saveOnAdd', 'Admin-added members', 'Save contacts when a member is added by an admin.', 30, { type: 'boolean' }, { widget: 'toggle' }, true),
   control('saveOnApproval', 'Approved requests', 'Save contacts after an admin approves a membership request.', 40, { type: 'boolean' }, { widget: 'toggle' }, true),
-  control('suffix', 'Name suffix', 'Suffix appended to saved display names.', 50, { type: 'string' }, { widget: 'text' }, DEFAULT_ADDRESS_BOOK_SYNC_SUFFIX),
+  control('suffix', 'Name suffix', 'Suffix appended to saved contact names.', 50, { type: 'string' }, { widget: 'text' }, DEFAULT_ADDRESS_BOOK_SYNC_SUFFIX),
   control('exemptGroupChatIds', 'Exempt groups', 'Managed groups in this scope that should not save arriving members.', 60, { type: 'array', items: { type: 'string' } }, { widget: 'tags' }, []),
   control(
     'dedupeTtlSeconds',

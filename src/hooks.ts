@@ -20,15 +20,15 @@ export function createAddressBookSyncHooks(context: PluginRuntimeContext): Plugi
       if (exemptGroupChatIds(config).has(event.chatId)) {
         return [auditSkipped(event, undefined, 'exempt-group')];
       }
-      if (!context.getGroupParticipants || !context.isKnownContact) {
+      if (!context.getUserProfileNames || !context.isKnownContact) {
         return [auditSkipped(event, undefined, 'missing-runtime-api')];
       }
 
-      const participants = await context.getGroupParticipants(event.chatId);
       const plan = await planAddressBookSync({
         runtime: {
           ephemeralStore: context.ephemeralStore,
           isKnownContact: context.isKnownContact,
+          getUserProfileNames: context.getUserProfileNames,
           resolveIdentityAddress: requiredIdentityAddressResolver(context.resolveIdentityAddress)
         },
         target: {
@@ -38,7 +38,6 @@ export function createAddressBookSyncHooks(context: PluginRuntimeContext): Plugi
           participantAction: event.action
         },
         config,
-        participants,
         targetIdentities: event.affectedIdentities,
         botIdentityIds: event.botIdentityIds,
         includeSkipAuditActions: true

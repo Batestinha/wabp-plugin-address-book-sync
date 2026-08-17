@@ -5,7 +5,7 @@ import { addressBookSyncMessages } from './messages';
 export const addressBookSyncManifest: PluginManifest = {
   pluginId: 'official.address-book-sync',
   kind: 'managed_group',
-  version: '0.1.0',
+  version: '0.2.0',
   coreApiRange: '>=0.2.0',
   messageNamespace: 'official.address-book-sync',
   descriptionKey: 'official.address-book-sync.description',
@@ -34,17 +34,18 @@ export const addressBookSyncManifest: PluginManifest = {
   backgroundJobs: [],
   cancellation: { workflows: [] },
   assistant: {
-    summary: 'Automatically saves unknown arriving members to the WhatsApp address book and supports explicit backfill for current group participants.',
+    summary: 'Automatically saves unknown arriving members using push name, username, or phone number and supports explicit backfill and repair.',
     useCases: [
       'Explain whether unknown joining members will be saved to the address book.',
       'Summarize the configured suffix and event triggers.',
       'Backfill unknown current group participants after enabling the plugin.',
+      'Repair historical plugin-saved phone fallback names when a push name or username is now available.',
       'Describe duplicate suppression for repeated participant-change events.'
     ],
     prerequisites: [
       'The plugin must be enabled in the target managed scope.',
       'The active transport must support WhatsApp address-book contact saves.',
-      'The runtime must provide live group participant and contact lookup helpers.'
+      'The runtime must provide live group participant, profile-name, and contact lookup helpers.'
     ],
     limitations: [
       'Automatic saves only consider participant-change events; current participants require an explicit backfill action.',
