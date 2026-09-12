@@ -1,4 +1,4 @@
-import type { PluginManifest } from '../../../../packages/plugin-sdk/src/manifest';
+import type { PluginManifest } from '@wabs/plugin-sdk/manifest';
 import { addressBookSyncConfigSchema } from './config';
 import { addressBookSyncMessages } from './messages';
 

@@ -1,0 +1,223 @@
+{
+  "schemaVersion": 1,
+  "pluginId": "official.address-book-sync",
+  "name": "Address Book Sync",
+  "description": "Save unknown arriving group members using push name, username, or phone number, plus a configured suffix.",
+  "kind": "managed_group",
+  "version": "0.2.1",
+  "coreApiRange": "^0.3.0",
+  "entrypoint": "dist/index.js",
+  "messageNamespace": "official.address-book-sync",
+  "descriptionKey": "official.address-book-sync.description",
+  "commands": [],
+  "help": {
+    "featureId": "address-book",
+    "titleKey": "official.address-book-sync.help.feature.title",
+    "summaryKey": "official.address-book-sync.help.feature.summary",
+    "order": 80,
+    "aliases": [
+      "contacts",
+      "address book"
+    ],
+    "topics": [
+      {
+        "topicId": "sync-address-book",
+        "titleKey": "official.address-book-sync.help.sync.title",
+        "summaryKey": "official.address-book-sync.help.sync.summary",
+        "instructionKeys": [
+          "official.address-book-sync.help.sync.instruction"
+        ],
+        "keywords": [
+          "contacts",
+          "join",
+          "member",
+          "sync"
+        ],
+        "availability": {
+          "invocation": "either",
+          "permission": "plugin.configure"
+        }
+      }
+    ]
+  },
+  "eventSubscriptions": [
+    "participant.change"
+  ],
+  "requiredPermissions": [
+    "plugin.configure"
+  ],
+  "requiredBotCapabilities": [],
+  "dangerousActions": [
+    "contact.saveToAddressBook"
+  ],
+  "backgroundJobs": [],
+  "cancellation": {
+    "workflows": []
+  },
+  "dependencies": [],
+  "assistant": {
+    "summary": "Automatically saves unknown arriving members using push name, username, or phone number and supports explicit backfill and repair.",
+    "useCases": [
+      "Explain whether unknown joining members will be saved to the address book.",
+      "Summarize the configured suffix and event triggers.",
+      "Backfill unknown current group participants after enabling the plugin.",
+      "Repair historical plugin-saved phone fallback names when a push name or username is now available.",
+      "Describe duplicate suppression for repeated participant-change events."
+    ],
+    "prerequisites": [
+      "The plugin must be enabled in the target managed scope.",
+      "The active transport must support WhatsApp address-book contact saves.",
+      "The runtime must provide live group participant, profile-name, and contact lookup helpers."
+    ],
+    "limitations": [
+      "Automatic saves only consider participant-change events; current participants require an explicit backfill action.",
+      "WhatsApp clients may not reflect app-state contact saves uniformly across devices."
+    ]
+  },
+  "operatorConsole": {
+    "configPaths": [
+      "enabled",
+      "saveOnJoin",
+      "saveOnAdd",
+      "saveOnApproval",
+      "suffix",
+      "exemptGroupChatIds",
+      "dedupeTtlSeconds"
+    ],
+    "controls": [
+      {
+        "id": "plugin.official.address-book-sync.enabled",
+        "path": "enabled",
+        "label": "Enabled",
+        "description": "Save unknown arriving group members to the WhatsApp address book.",
+        "section": "Address Book Sync",
+        "order": 10,
+        "schema": {
+          "type": "boolean"
+        },
+        "ui": {
+          "widget": "toggle",
+          "helpText": "Save unknown arriving group members to the WhatsApp address book."
+        },
+        "relatedActionIds": [
+          "official.address-book-sync.backfill"
+        ]
+      },
+      {
+        "id": "plugin.official.address-book-sync.saveOnJoin",
+        "path": "saveOnJoin",
+        "label": "Direct joins",
+        "description": "Save contacts when WhatsApp reports a direct join.",
+        "section": "Address Book Sync",
+        "order": 20,
+        "schema": {
+          "type": "boolean"
+        },
+        "ui": {
+          "widget": "toggle",
+          "helpText": "Save contacts when WhatsApp reports a direct join."
+        },
+        "relatedActionIds": [
+          "official.address-book-sync.backfill"
+        ]
+      },
+      {
+        "id": "plugin.official.address-book-sync.saveOnAdd",
+        "path": "saveOnAdd",
+        "label": "Admin-added members",
+        "description": "Save contacts when a member is added by an admin.",
+        "section": "Address Book Sync",
+        "order": 30,
+        "schema": {
+          "type": "boolean"
+        },
+        "ui": {
+          "widget": "toggle",
+          "helpText": "Save contacts when a member is added by an admin."
+        },
+        "relatedActionIds": [
+          "official.address-book-sync.backfill"
+        ]
+      },
+      {
+        "id": "plugin.official.address-book-sync.saveOnApproval",
+        "path": "saveOnApproval",
+        "label": "Approved requests",
+        "description": "Save contacts after an admin approves a membership request.",
+        "section": "Address Book Sync",
+        "order": 40,
+        "schema": {
+          "type": "boolean"
+        },
+        "ui": {
+          "widget": "toggle",
+          "helpText": "Save contacts after an admin approves a membership request."
+        },
+        "relatedActionIds": [
+          "official.address-book-sync.backfill"
+        ]
+      },
+      {
+        "id": "plugin.official.address-book-sync.suffix",
+        "path": "suffix",
+        "label": "Name suffix",
+        "description": "Suffix appended to saved contact names.",
+        "section": "Address Book Sync",
+        "order": 50,
+        "schema": {
+          "type": "string"
+        },
+        "ui": {
+          "widget": "text",
+          "helpText": "Suffix appended to saved contact names."
+        },
+        "relatedActionIds": [
+          "official.address-book-sync.backfill"
+        ]
+      },
+      {
+        "id": "plugin.official.address-book-sync.exemptGroupChatIds",
+        "path": "exemptGroupChatIds",
+        "label": "Exempt groups",
+        "description": "Managed groups in this scope that should not save arriving members.",
+        "section": "Address Book Sync",
+        "order": 60,
+        "schema": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ui": {
+          "widget": "tags",
+          "helpText": "Managed groups in this scope that should not save arriving members."
+        },
+        "relatedActionIds": [
+          "official.address-book-sync.backfill"
+        ]
+      },
+      {
+        "id": "plugin.official.address-book-sync.dedupeTtlSeconds",
+        "path": "dedupeTtlSeconds",
+        "label": "Dedupe TTL",
+        "description": "Seconds to suppress duplicate address-book saves for the same scope, group, and user.",
+        "section": "Address Book Sync",
+        "order": 70,
+        "schema": {
+          "type": "number",
+          "unit": "seconds",
+          "min": 1,
+          "max": 2592000
+        },
+        "ui": {
+          "widget": "duration",
+          "helpText": "Seconds to suppress duplicate address-book saves for the same scope, group, and user."
+        },
+        "relatedActionIds": [
+          "official.address-book-sync.backfill"
+        ]
+      }
+    ],
+    "internalConfigPaths": []
+  }
+}

@@ -1,4 +1,4 @@
-import type { HookPlugin as BotPlugin } from '../../../../packages/plugin-sdk/src/hook-plugin';
+import type { HookPlugin as BotPlugin } from '@wabs/plugin-sdk/hook-plugin';
 import { createAddressBookSyncHooks } from './hooks';
 import { addressBookSyncManifest } from './manifest';
 

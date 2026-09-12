@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "sourceRepository": "https://github.com/Batestinha/wabp",
+  "sourceCommit": "0c32647aec6ad71579db7d32999d3ec971af1818",
+  "sourceDirectory": "src/plugins/official/address-book-sync",
+  "sourceTreeSha": "c25fd3fdfd4f2838462d6cca617f53abc793a00a",
+  "extractedHistoryCommit": "63311de6f1c1cc73b6b7036e33482131c0f5e34b",
+  "sdk": {
+    "version": "0.3.1",
+    "path": "vendor/wabs-plugin-sdk-0.3.1-78a8ff1d1be4.tgz",
+    "sha256": "78a8ff1d1be4b53062d0a708d143f83a896991fbb5587cbb39277209a9927b7c",
+    "sourceDirectory": "packages/plugin-sdk",
+    "sourceCommit": "0c32647aec6ad71579db7d32999d3ec971af1818"
+  }
+}

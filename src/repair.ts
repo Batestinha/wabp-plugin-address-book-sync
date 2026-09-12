@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { KnownContact, WhatsAppUserProfileNames } from '../../../../packages/plugin-sdk/src/transport';
+import type { KnownContact, WhatsAppUserProfileNames } from '@wabs/plugin-sdk/transport';
 import {
   ADDRESS_BOOK_SYNC_PLUGIN_ID,
   appendAddressBookSuffix,

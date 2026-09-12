@@ -1,0 +1,8 @@
+{
+  "official.address-book-sync.description": "Guarda membros desconhecidos que entram no grupo usando o nome push, o nome de utilizador ou o número de telefone, com um sufixo configurado.",
+  "official.address-book-sync.help.feature.title": "Sincronização da agenda",
+  "official.address-book-sync.help.feature.summary": "Guarda membros desconhecidos como contactos, preferindo o nome push, o nome de utilizador e depois o número de telefone.",
+  "official.address-book-sync.help.sync.title": "Sincronizar membros que chegam",
+  "official.address-book-sync.help.sync.summary": "Escolhe o melhor nome de perfil disponível e aplica o sufixo configurado quando membros elegíveis chegam.",
+  "official.address-book-sync.help.sync.instruction": "Esta funcionalidade é automática quando está ativa; os administradores configuram os gatilhos e podem preencher membros desconhecidos ou reparar nomes históricos baseados no número no painel do operador."
+}

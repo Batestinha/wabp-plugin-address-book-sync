@@ -1,4 +1,4 @@
-import type { MessageCatalog } from '../../../../packages/plugin-sdk/src/i18n';
+import type { MessageCatalog } from '@wabs/plugin-sdk/i18n';
 
 export const addressBookSyncMessages: MessageCatalog = {
   'official.address-book-sync.description': 'Save unknown arriving group members using their push name, username, or phone number, plus a configured suffix.',

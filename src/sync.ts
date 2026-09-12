@@ -1,8 +1,8 @@
-import type { StableIdentityAddressResolution } from '../../../../packages/plugin-sdk/src/identity';
-import type { PluginAction } from '../../../../packages/plugin-sdk/src/actions';
-import type { PluginEphemeralStore } from '../../../../packages/plugin-sdk/src/ephemeral-store';
-import type { PluginParticipantIdentity } from '../../../../packages/plugin-sdk/src/hooks';
-import type { WhatsAppUserProfileNames } from '../../../../packages/plugin-sdk/src/transport';
+import type { StableIdentityAddressResolution } from '@wabs/plugin-sdk/identity';
+import type { PluginAction } from '@wabs/plugin-sdk/actions';
+import type { PluginEphemeralStore } from '@wabs/plugin-sdk/ephemeral-store';
+import type { PluginParticipantIdentity } from '@wabs/plugin-sdk/hooks';
+import type { WhatsAppUserProfileNames } from '@wabs/plugin-sdk/transport';
 import type { AddressBookSyncConfig } from './config';
 
 export const ADDRESS_BOOK_SYNC_PLUGIN_ID = 'official.address-book-sync';
