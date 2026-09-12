@@ -1,7 +1,7 @@
-import type { PluginAction } from '../../../platform/pluginRuntime/runtime/pluginActionTypes';
-import type { PluginRuntimeContext } from '../../../platform/pluginRuntime/runtime/pluginRuntimeContext';
-import type { PluginParticipantChangeEvent, PluginRuntimeHooks } from '../../../platform/pluginRuntime/types';
-import type { StableIdentityAddressResolution } from '../../../platform/identity/identityAddressService';
+import type { PluginAction } from '../../../../packages/plugin-sdk/src/actions';
+import type { PluginHookContext as PluginRuntimeContext } from '../../../../packages/plugin-sdk/src/hook-plugin';
+import type { PluginParticipantChangeEvent, PluginRuntimeHooks } from '../../../../packages/plugin-sdk/src/hooks';
+import type { StableIdentityAddressResolution } from '../../../../packages/plugin-sdk/src/identity';
 import { parseAddressBookSyncConfig, type AddressBookSyncConfig } from './config';
 import { planAddressBookSync } from './sync';
 
