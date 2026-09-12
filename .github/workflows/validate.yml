@@ -38,9 +38,11 @@ jobs:
           fixture_dir="$(mktemp -d "${RUNNER_TEMP}/wabs-fixture.XXXXXX")"
           tar -xzf .cache/*.tgz -C "$fixture_dir"
           node tests/archive-smoke.cjs "$fixture_dir/package"
+          mkdir -p release-artifacts
+          cp .cache/*.tgz release-artifacts/
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: standalone-plugin-node${{ matrix.node }}
-          path: .cache/*.tgz
+          path: release-artifacts/*.tgz
           retention-days: 14
           if-no-files-found: error
