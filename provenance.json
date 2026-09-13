@@ -1,15 +1,17 @@
 {
   "schemaVersion": 1,
   "sourceRepository": "https://github.com/Batestinha/wabp",
-  "sourceCommit": "0c32647aec6ad71579db7d32999d3ec971af1818",
+  "sourceCommit": "7db953317afc04e23840622e8124949fdfb665be",
   "sourceDirectory": "src/plugins/official/address-book-sync",
-  "sourceTreeSha": "c25fd3fdfd4f2838462d6cca617f53abc793a00a",
+  "sourceTreeSha": "f799da0e3fd16c31929fa0761b3a99eb663aa1c9",
   "extractedHistoryCommit": "63311de6f1c1cc73b6b7036e33482131c0f5e34b",
   "sdk": {
-    "version": "0.3.1",
-    "path": "vendor/wabs-plugin-sdk-0.3.1-78a8ff1d1be4.tgz",
-    "sha256": "78a8ff1d1be4b53062d0a708d143f83a896991fbb5587cbb39277209a9927b7c",
+    "version": "0.3.15",
+    "path": "vendor/wabs-plugin-sdk-0.3.15-d72352d6a362.tgz",
+    "sha256": "d72352d6a3628bd4ddc4d61aa856f2659ddeacb801b9af9feefa54fd7e20cbb6",
     "sourceDirectory": "packages/plugin-sdk",
-    "sourceCommit": "0c32647aec6ad71579db7d32999d3ec971af1818"
-  }
+    "sourceCommit": "17b5bfdc023fff85e1c2b788180971ea6bfc53cf"
+  },
+  "previousStandaloneCommit": "6a77160f1742b6237c38853dbcf8a8c7aac44404",
+  "sourceImportTransform": "Replace relative packages/plugin-sdk/src imports with @wabs/plugin-sdk subpaths; retain other source bytes."
 }

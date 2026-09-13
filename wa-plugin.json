@@ -4,8 +4,8 @@
   "name": "Address Book Sync",
   "description": "Save unknown arriving group members using push name, username, or phone number, plus a configured suffix.",
   "kind": "managed_group",
-  "version": "0.2.1",
-  "coreApiRange": "^0.3.0",
+  "version": "0.2.2",
+  "coreApiRange": "^0.3.2",
   "entrypoint": "dist/index.js",
   "messageNamespace": "official.address-book-sync",
   "descriptionKey": "official.address-book-sync.description",
@@ -219,5 +219,13 @@
       }
     ],
     "internalConfigPaths": []
-  }
+  },
+  "externalActions": [
+    {
+      "actionId": "official.address-book-sync.backfill",
+      "access": "mutation",
+      "scope": "account",
+      "timeoutMs": 120000
+    }
+  ]
 }
