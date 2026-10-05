@@ -4,7 +4,7 @@
   "name": "Address Book Sync",
   "description": "Save named members and safely repair plugin-created phone fallback contacts.",
   "kind": "managed_group",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "coreApiRange": "^0.3.11",
   "entrypoint": "dist/index.js",
   "messageNamespace": "official.address-book-sync",
@@ -61,7 +61,7 @@
   },
   "dependencies": [],
   "assistant": {
-    "summary": "Automatically save named members, wait for missing names, and repair plugin-created phone fallback contacts.",
+    "summary": "Automatically saves unknown arriving members using push name, persisted display name, or username and supports explicit backfill and repair.",
     "useCases": [
       "Explain whether unknown joining members will be saved to the address book.",
       "Summarize the configured suffix and event triggers.",
@@ -75,7 +75,7 @@
       "The runtime must provide live group participant, profile-name, and contact lookup helpers."
     ],
     "limitations": [
-      "Members without a display name or username remain pending and are retried automatically.",
+      "Names that are not yet available remain pending and are retried automatically.",
       "WhatsApp clients may not reflect app-state contact saves uniformly across devices."
     ]
   },

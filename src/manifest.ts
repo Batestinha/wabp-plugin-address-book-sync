@@ -6,7 +6,7 @@ import { addressBookSyncMessages } from './messages';
 export const addressBookSyncManifest: PluginManifest = {
   pluginId: 'official.address-book-sync',
   kind: 'managed_group',
-  version: '0.3.1',
+  version: '0.3.2',
   coreApiRange: '^0.3.11',
   messageNamespace: 'official.address-book-sync',
   descriptionKey: 'official.address-book-sync.description',

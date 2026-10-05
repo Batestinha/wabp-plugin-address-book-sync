@@ -8,7 +8,7 @@ const metadata = require('../wa-plugin.json');
 
 test('retains the stable plugin identity, declared actions, configuration and translation keys', () => {
   assert.equal(validatePluginManifest(plugin.manifest), plugin.manifest);
-  for (const key of ['pluginId', 'version', 'coreApiRange', 'messageNamespace', 'commands', 'eventSubscriptions', 'dangerousActions', 'backgroundJobs']) {
+  for (const key of ['pluginId', 'version', 'coreApiRange', 'messageNamespace', 'commands', 'eventSubscriptions', 'dangerousActions', 'backgroundJobs', 'assistant', 'help', 'externalActions']) {
     assert.deepEqual(plugin.manifest[key], metadata[key], key);
   }
   const pt = JSON.parse(fs.readFileSync(path.join(__dirname, '../locales/pt-PT', metadata.messageNamespace + '.json')));
