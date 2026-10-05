@@ -71,7 +71,7 @@ export function createContactReconciler(context: PluginHookContext, now = Date.n
     if (!config.enabled || !await context.enabledFor(input.scopeId)) return summarize(results, input, 0, groupErrors, 'plugin-disabled');
     const groups = (await rt.coveredGroupsForScope(input.scopeId))
       .filter(group => !input.chatId || group.groupWid === input.chatId);
-    if (input.chatId && !groups.length) throw new Error('Group is not covered by the selected scope.');
+    if (input.chatId && !groups.length) throw Object.assign(new Error('Group is not covered by the selected scope.'), { statusCode: 409 });
     const resolveCache = new Map<string, Promise<StableIdentityAddressResolution>>();
     const resolve = (wid: string) => {
       if (!resolveCache.has(wid)) resolveCache.set(wid, rt.resolve(wid));

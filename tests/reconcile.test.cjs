@@ -106,6 +106,7 @@ test('rate-limited name lookups retain pending work and use backoff', async () =
 
 test('scope exclusions and management mode prevent writes; manual selection cannot add nonmembers', async () => {
   const h = harness(); h.state.pushName = 'Leonor Batalha'; h.state.config.exemptGroupChatIds = ['group@g.us'];
+  await assert.rejects(h.run({ chatId: 'foreign@g.us' }), { statusCode: 409 });
   await h.run(); assert.equal(h.writes.length, 0);
   h.state.config.exemptGroupChatIds = []; h.state.groups[0].managementMode = 'OBSERVE'; await h.run(); assert.equal(h.writes.length, 0);
   h.state.groups[0].managementMode = 'MANAGE'; h.state.enabled = false; await h.run(); assert.equal(h.writes.length, 0);
