@@ -19,3 +19,15 @@ test('retains the stable plugin identity, declared actions, configuration and tr
   assert.equal(typeof plugin.registerHooks, 'function');
   assert.equal(plugin.lifecycle, undefined);
 });
+
+// Package metadata is consumed before the executable manifest is loaded.
+test('console config metadata covers each stored field with a control or an explained internal path', () => {
+  const console = metadata.operatorConsole;
+  for (const internal of console.internalConfigPaths) {
+    assert.equal(typeof internal.path, 'string');
+    assert.equal(typeof internal.reason, 'string');
+    assert.ok(internal.reason.length);
+  }
+  const covered = [...console.controls, ...console.internalConfigPaths].map(entry => entry.path);
+  assert.deepEqual([...new Set(covered)].sort(), [...console.configPaths].sort());
+});

@@ -4,7 +4,7 @@
   "name": "Address Book Sync",
   "description": "Save named members and safely repair plugin-created phone fallback contacts.",
   "kind": "managed_group",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "coreApiRange": "^0.3.11",
   "entrypoint": "dist/index.js",
   "messageNamespace": "official.address-book-sync",
@@ -86,7 +86,8 @@
       "saveOnAdd",
       "saveOnApproval",
       "suffix",
-      "exemptGroupChatIds"
+      "exemptGroupChatIds",
+      "dedupeTtlSeconds"
     ],
     "controls": [
       {
@@ -202,7 +203,10 @@
       }
     ],
     "internalConfigPaths": [
-      "dedupeTtlSeconds"
+      {
+        "path": "dedupeTtlSeconds",
+        "reason": "Retained for stored configuration compatibility. Confirmed account address-book state now prevents duplicate saves."
+      }
     ]
   },
   "externalActions": [

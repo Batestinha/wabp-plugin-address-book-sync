@@ -2,7 +2,7 @@
 
 Save unknown arriving group members using their learned WhatsApp push name, persisted identity display name, or username, plus a configured suffix. If none is available, wait for a name instead of saving a phone-number label.
 
-Standalone WABS package `official.address-book-sync` version `0.3.0`, requiring WABP core API `^0.3.11`. The archive includes its runtime dependencies and Portuguese translations. WABP owns scope configuration, enabled state, identity resolution, durable jobs, plugin data, and authorized conditional contact writes.
+Standalone WABS package `official.address-book-sync` version `0.3.1`, requiring WABP core API `^0.3.11`. The archive includes its runtime dependencies and Portuguese translations. WABP owns scope configuration, enabled state, identity resolution, durable jobs, plugin data, and authorized conditional contact writes.
 
 Install through a trusted WABS registry entry and its immutable archive SHA-256. Installation and scope enablement are separate operations.
 
