@@ -58,7 +58,7 @@ test('legacy receipts work and manual contact edits are preserved', async () => 
 test('waits without saving a phone fallback and resumes after the name arrives', async () => {
   const h = harness(); const first = await h.run();
   assert.equal(first.pendingNames, 1); assert.equal(h.writes.length, 0); assert.equal(h.rows.size, 1);
-  assert.equal(h.jobs[0].runAt.getTime(), 1_060_000);
+  assert.equal(h.jobs[0].runAt.getTime(), 1_080_000);
   h.state.pushName = 'Fixture Person'; h.advance(60_000);
   const result = await h.reconciler.retry('scope', 'person');
   assert.equal(result.saved, 1); assert.equal(h.state.name, 'Fixture Person (Escalada)'); assert.equal(h.rows.size, 0);
@@ -101,7 +101,7 @@ test('rate-limited name lookups retain pending work and use backoff', async () =
   const h = harness(); h.state.failProfiles = true;
   const result = await h.run(); assert.equal(result.retryScheduled, 1); assert.equal(h.rows.size, 1); assert.equal(h.writes.length, 0);
   h.advance(60_000); await h.reconciler.retry('scope', 'person');
-  assert.equal(h.jobs.at(-1).runAt.getTime(), 1_360_000);
+  assert.equal(h.jobs.at(-1).runAt.getTime(), 1_380_000);
 });
 
 test('scope exclusions and management mode prevent writes; manual selection cannot add nonmembers', async () => {
@@ -151,6 +151,50 @@ test('arrival hooks enqueue durable work and message hooks wake the named identi
   await hooks.onParticipantChange({ scopeId: 'scope', chatId: 'group@g.us', action: 'join', eventId: 'join1', botIdentityIds: [],
     affectedIdentities: [{ identityId: 'person', addressBookWid: h.wid }] });
   assert.equal(h.jobs[0].jobName, RETRY_JOB); assert.deepEqual(h.jobs[0].payload.wids, [h.wid]); assert.equal(h.writes.length, 0);
+  await hooks.onPluginJob({ ...h.jobs[0], payload: h.jobs[0].payload });
+  h.jobs.length = 0;
   await hooks.onMessage({ scopeId: 'scope', actorWid: h.lid, actorIdentityId: 'person', message: { context: 'group', chatId: 'group@g.us', fromMe: false } });
-  assert.equal(h.jobs[1].payload.wake, true);
+  assert.equal(h.jobs[0].payload.wake, true);
+});
+
+test('pending retries share one durable bucket and scan groups once for the entire due batch', async () => {
+  const h = harness();
+  const wids = Array.from({ length: 30 }, (_, i) => `35190000${String(i).padStart(4, '0')}@c.us`);
+  const base = await h.context.resolveIdentityAddress(h.wid);
+  h.context.resolveIdentityAddress = async wid => ({ ...base, identityId: wid, originalWid: wid, addressBookWid: wid, aliases: [wid] });
+  h.state.groups.push({ ...h.state.groups[0], groupWid: 'second@g.us' });
+  let groupReads = 0;
+  h.context.getGroupParticipants = async () => { groupReads++; return wids.map(wid => ({ wid })); };
+  h.context.contacts.inspect = async (_scope, requested) => requested.map(wid => ({ identityId: wid, wid }));
+  h.context.getUserProfileNames = async () => [];
+  assert.equal((await h.run()).pendingNames, 30);
+  assert.equal(new Set(h.jobs.map(job => job.dedupeKey)).size, 1);
+  assert.equal(h.jobs[0].payload.reconcilePending, true);
+  assert.equal(h.jobs[0].runAt.getTime(), 1_080_000);
+  groupReads = 0; h.advance(80_000);
+  assert.equal((await h.reconciler.retryPending('scope')).pendingNames, 30);
+  assert.equal(groupReads, 2);
+  // Retained per-person jobs do not immediately repeat the batch.
+  assert.equal(await h.reconciler.retry('scope', wids[1]), undefined);
+  assert.equal(await h.reconciler.retryPending('scope'), undefined);
+  assert.equal(groupReads, 2);
+});
+
+test('messages from contacts without pending work do not schedule membership queries', async () => {
+  const h = harness(), hooks = plugin.registerHooks(h.context);
+  await hooks.onMessage({ scopeId: 'scope', actorWid: h.lid, actorIdentityId: 'person', message: { context: 'group', chatId: 'group@g.us', fromMe: false } });
+  assert.equal(h.jobs.length, 0);
+});
+
+test('arrival and message jobs read only their event group', async () => {
+  const h = harness(), hooks = plugin.registerHooks(h.context);
+  h.state.groups.push({ ...h.state.groups[0], groupWid: 'second@g.us' });
+  const reads = [];
+  h.context.getGroupParticipants = async wid => { reads.push(wid); return h.state.members; };
+  await hooks.onPluginJob({ jobName: RETRY_JOB, scopeId: 'scope', groupWid: 'group@g.us', payload: { wids: [h.wid], arrivalAction: 'join' } });
+  assert.deepEqual(reads, ['group@g.us']);
+  reads.length = 0; h.state.pushName = 'Fixture Person';
+  await hooks.onPluginJob({ jobName: RETRY_JOB, scopeId: 'scope', groupWid: 'second@g.us', payload: { wids: [h.wid], wake: true } });
+  assert.deepEqual(reads, ['second@g.us']);
+  assert.equal(h.state.name, 'Fixture Person (Escalada)');
 });

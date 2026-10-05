@@ -40,9 +40,12 @@ export function createContactReconciler(context: PluginHookContext, now = Date.n
       dedupeKey: `contact-sync:scan:${scopeId}:${Math.floor(at / SCAN_INTERVAL_MS)}`, replaceRetainedTerminalJob: true });
   }
   async function schedulePending(scopeId: string, pending: PendingContact) {
-    await runtime().enqueuePluginJob({ jobName: RETRY_JOB, scopeId, ...(pending.groupWid ? { groupWid: pending.groupWid } : {}), executionClass: 'maintenance',
-      runAt: new Date(pending.nextAttemptAt), payload: { identityId: pending.identityId },
-      dedupeKey: `contact-sync:retry:${scopeId}:${pending.identityId}:${pending.nextAttemptAt}`, replaceRetainedTerminalJob: true });
+    // One group-membership scan per due batch, rather than one per unnamed
+    // person. Round up so every identity in the bucket is eligible when it runs.
+    const at = Math.ceil(pending.nextAttemptAt / 60_000) * 60_000;
+    await runtime().enqueuePluginJob({ jobName: RETRY_JOB, scopeId, executionClass: 'maintenance',
+      runAt: new Date(at), payload: { reconcilePending: true },
+      dedupeKey: `contact-sync:retry-batch:${scopeId}:${at}`, replaceRetainedTerminalJob: true });
   }
   async function withIdentityLease<T>(scopeId: string, identityId: string, run: () => Promise<T>) {
     const key = `contact-sync:working:${scopeId}:${identityId}`;
@@ -219,10 +222,22 @@ export function createContactReconciler(context: PluginHookContext, now = Date.n
   async function retry(scopeId: string, identityId: string) {
     const work = await runtime().dataStore.get<PendingContact>(PREFIX + identityId, scopeId);
     if (!work || work.nextAttemptAt > now()) return;
-    // Search all currently covered groups: the originating event group may have closed.
-    return run({ scopeId, participantWids: [work.wid], automatic: true });
+    // Retained jobs from older packages share the same batch path.
+    return retryPending(scopeId);
   }
-  return { run, ready, retry, scheduleScan };
+  async function retryPending(scopeId: string) {
+    const due = (await runtime().dataStore.list())
+      .filter(row => row.scopeId === scopeId && row.key.startsWith(PREFIX))
+      .map(row => row.valueJson as PendingContact)
+      .filter(work => work?.identityId && work.wid && work.nextAttemptAt <= now());
+    if (!due.length) return;
+    // Search all currently covered groups: the originating event group may have closed.
+    return run({ scopeId, participantWids: due.map(work => work.wid), automatic: true });
+  }
+  async function hasPending(scopeId: string, identityId: string) {
+    return Boolean(await runtime().dataStore.get(PREFIX + identityId, scopeId));
+  }
+  return { run, ready, retry, retryPending, hasPending, scheduleScan };
 }
 
 function errorMessage(error: unknown): string { return error instanceof Error ? error.message : String(error); }

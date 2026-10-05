@@ -22,6 +22,7 @@ export function createAddressBookSyncHooks(context: PluginHookContext): PluginRu
       if (event.message.fromMe || event.message.context !== 'group') return;
       const config = parseAddressBookSyncConfig(await context.configFor(event.scopeId));
       if (!config.enabled || config.exemptGroupChatIds.includes(event.message.chatId)) return;
+      if (!await reconciler.hasPending(event.scopeId, event.actorIdentityId)) return;
       if (!context.enqueuePluginJob) throw new Error('Durable contact job scheduling is unavailable.');
       await context.enqueuePluginJob({ jobName: RETRY_JOB, scopeId: event.scopeId, groupWid: event.message.chatId,
         executionClass: 'maintenance', payload: { wids: [event.actorWid], wake: true },
@@ -32,14 +33,15 @@ export function createAddressBookSyncHooks(context: PluginHookContext): PluginRu
         try { await reconciler.run({ scopeId: job.scopeId, automatic: true }); }
         finally { await reconciler.scheduleScan(job.scopeId, Date.now() + SCAN_INTERVAL_MS); }
       } else if (job.jobName === RETRY_JOB) {
-        const payload = job.payload as { identityId?: string; wids?: string[]; arrivalAction?: string; wake?: boolean };
-        if (payload.identityId) await reconciler.retry(job.scopeId, payload.identityId);
+        const payload = job.payload as { reconcilePending?: boolean; identityId?: string; wids?: string[]; arrivalAction?: string; wake?: boolean };
+        if (payload.reconcilePending) await reconciler.retryPending(job.scopeId);
+        else if (payload.identityId) await reconciler.retry(job.scopeId, payload.identityId);
         else if (Array.isArray(payload.wids)) {
           const config = parseAddressBookSyncConfig(await context.configFor(job.scopeId));
           const allowed = payload.arrivalAction === 'join' ? config.saveOnJoin
             : payload.arrivalAction === 'add' ? config.saveOnAdd : payload.arrivalAction === 'membership_approved' && config.saveOnApproval;
           if (payload.arrivalAction && !allowed) return;
-          await reconciler.run({ scopeId: job.scopeId, participantWids: payload.wids, automatic: true,
+          await reconciler.run({ scopeId: job.scopeId, chatId: job.groupWid, participantWids: payload.wids, automatic: true,
             allowNew: Boolean(payload.arrivalAction), force: payload.wake === true });
         }
       }
