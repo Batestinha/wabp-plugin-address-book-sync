@@ -4,7 +4,7 @@ export const addressBookSyncBackfillInputSchema = z.object({
     scopeId: z.string().trim().min(1),
     chatId: runtimeGroupChatIdSchema.optional(),
     participantWids: z.array(z.string().trim().min(1)).max(2000).optional(),
-    mode: z.enum(['unknown-members', 'repair-phone-fallbacks']).default('unknown-members'),
+    mode: z.enum(['sync-members', 'unknown-members', 'repair-phone-fallbacks']).default('sync-members'),
     dryRun: z.boolean().default(true),
     actorWid: z.string().trim().min(1).optional()
   }).strict();

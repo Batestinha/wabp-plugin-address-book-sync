@@ -12,9 +12,10 @@ export const historicalAddressBookContactSaveAuditSchema = z.object({
   action: z.object({
     type: z.literal('contact.saveToAddressBook'),
     wid: z.string().trim().min(1),
-    displayName: z.string().trim().min(1),
+    contactName: z.string().trim().min(1).optional(),
+    displayName: z.string().trim().min(1).optional(),
     sourceGroupWid: z.string().trim().min(1).optional()
-  }).passthrough()
+  }).passthrough().refine(action => Boolean(action.contactName ?? action.displayName), 'Saved contact name is missing')
 }).passthrough();
 
 export type AddressBookSyncRepairSkipReason =
@@ -45,14 +46,14 @@ export interface AddressBookSyncRepairResult {
   oldContactName: string;
   status: 'would_repair' | 'repair_requested' | 'skipped';
   contactName?: string | undefined;
-  nameSource?: 'push-name' | 'username' | undefined;
+  nameSource?: 'push-name' | 'identity-display-name' | 'username' | undefined;
   reason?: AddressBookSyncRepairSkipReason | undefined;
 }
 
 export interface AddressBookSyncRepairPlanItem {
   candidate: AddressBookSyncRepairCandidate & { groupId: string; sourceGroupWid: string };
   contactName: string;
-  nameSource: 'push-name' | 'username';
+  nameSource: 'push-name' | 'identity-display-name' | 'username';
 }
 
 export function findAddressBookSyncRepairCandidates(input: {
@@ -70,7 +71,8 @@ export function findAddressBookSyncRepairCandidates(input: {
     const audit = historicalAddressBookContactSaveAuditSchema.safeParse(row.targetJson);
     if (!audit.success) continue;
     if (input.chatId && audit.data.action.sourceGroupWid !== input.chatId) continue;
-    const suffix = historicalPhoneFallbackSuffix(audit.data.action.displayName, audit.data.action.wid);
+    const savedName = (audit.data.action.contactName ?? audit.data.action.displayName)!;
+    const suffix = historicalPhoneFallbackSuffix(savedName, audit.data.action.wid);
     if (suffix === undefined) {
       nonPhoneFallbackCount += 1;
       continue;
@@ -79,7 +81,7 @@ export function findAddressBookSyncRepairCandidates(input: {
       auditId: row.id,
       ...(row.groupId ? { groupId: row.groupId } : {}),
       wid: audit.data.action.wid,
-      oldContactName: audit.data.action.displayName,
+      oldContactName: savedName,
       suffix,
       ...(audit.data.action.sourceGroupWid ? { sourceGroupWid: audit.data.action.sourceGroupWid } : {})
     });
@@ -136,7 +138,7 @@ export function planAddressBookSyncRepairs(input: {
       profileByWid.get(normalizeAddressBookWid(candidate.wid)),
       undefined
     );
-    if (!selectedName || selectedName.source === 'phone-number') {
+    if (!selectedName) {
       results.push(repairSkipped(candidate, 'profile-name-unavailable'));
       continue;
     }

@@ -17,7 +17,7 @@ function fixture() {
   return { identity, runtime, input: { runtime, target: { scopeId: 'fixture-scope', chatId: 'fixture@g.us', eventId: 'fixture-event' }, config: parseAddressBookSyncConfig({ enabled: true, suffix: '(Preserved)' }), targetIdentities: [identity], includeSkipAuditActions: true } };
 }
 
-test('keeps configured suffixes and deduplicates aliases and repeated deliveries', async () => {
+test('keeps configured suffixes and deduplicates aliases without claiming success during planning', async () => {
   const { identity, input } = fixture();
   input.targetIdentities.push({ ...identity, sourceWid: identity.addressBookWid });
   const first = await planAddressBookSync(input);
@@ -26,8 +26,7 @@ test('keeps configured suffixes and deduplicates aliases and repeated deliveries
   assert.equal(saves[0].wid, identity.addressBookWid);
   assert.equal(saves[0].contactName, 'Fixture Person (Preserved)');
   const retry = await planAddressBookSync(input);
-  assert.equal(retry.actions.filter(action => action.type === 'contact.saveToAddressBook').length, 0);
-  assert.equal(retry.results[0].reason, 'duplicate-event');
+  assert.equal(retry.actions.filter(action => action.type === 'contact.saveToAddressBook').length, 1);
 });
 
 test('excludes the bot and known contacts using authoritative stable identity values', async () => {
@@ -49,6 +48,6 @@ test('uses scoped actor configuration and remains inactive when its stored enabl
 test('preserves name selection priority without using unverified display labels', () => {
   assert.deepEqual(selectAddressBookContactName({ pushName: ' First ', username: 'second' }, '351900000001'), { value: 'First', source: 'push-name' });
   assert.deepEqual(selectAddressBookContactName({ username: '@second' }, '351900000001'), { value: '@second', source: 'username' });
-  assert.deepEqual(selectAddressBookContactName({}, '351900000001'), { value: '+351900000001', source: 'phone-number' });
+  assert.equal(selectAddressBookContactName({}, '351900000001'), undefined);
   assert.equal(selectAddressBookContactName({}, undefined), undefined);
 });

@@ -1,98 +1,48 @@
-import type { PluginAction } from '@wabs/plugin-sdk/actions';
-import type { PluginHookContext as PluginRuntimeContext } from '@wabs/plugin-sdk/hook-plugin';
-import type { PluginParticipantChangeEvent, PluginRuntimeHooks } from '@wabs/plugin-sdk/hooks';
-import type { StableIdentityAddressResolution } from '@wabs/plugin-sdk/identity';
-import { parseAddressBookSyncConfig, type AddressBookSyncConfig } from './config';
-import { planAddressBookSync } from './sync';
+import type { PluginHookContext } from '@wabs/plugin-sdk/hook-plugin';
+import type { PluginRuntimeHooks } from '@wabs/plugin-sdk/hooks';
+import { parseAddressBookSyncConfig } from './config';
+import { createContactReconciler, SCAN_JOB, RETRY_JOB, SCAN_INTERVAL_MS } from './reconcile';
 
-const pluginId = 'official.address-book-sync';
-
-export function createAddressBookSyncHooks(context: PluginRuntimeContext): PluginRuntimeHooks {
+export function createAddressBookSyncHooks(context: PluginHookContext): PluginRuntimeHooks {
+  const reconciler = createContactReconciler(context);
   return {
+    onRuntimeReady: () => reconciler.ready(),
     async onParticipantChange(event) {
-      const config = parseAddressBookSyncConfig(await context.configFor(
-        event.scopeId,
-        event.actorIdentity?.identityId
-      ));
-      if (!config.enabled || !shouldSaveForEvent(event, config)) {
-        return;
-      }
-      if (exemptGroupChatIds(config).has(event.chatId)) {
-        return [auditSkipped(event, undefined, 'exempt-group')];
-      }
-      if (!context.getUserProfileNames || !context.isKnownContact) {
-        return [auditSkipped(event, undefined, 'missing-runtime-api')];
-      }
-
-      const plan = await planAddressBookSync({
-        runtime: {
-          ephemeralStore: context.ephemeralStore,
-          isKnownContact: context.isKnownContact,
-          getUserProfileNames: context.getUserProfileNames,
-          resolveIdentityAddress: requiredIdentityAddressResolver(context.resolveIdentityAddress)
-        },
-        target: {
-          scopeId: event.scopeId,
-          chatId: event.chatId,
-          eventId: event.eventId,
-          participantAction: event.action
-        },
-        config,
-        targetIdentities: event.affectedIdentities,
-        botIdentityIds: event.botIdentityIds,
-        includeSkipAuditActions: true
-      });
-
-      return plan.actions;
-    }
-  };
-}
-
-function requiredIdentityAddressResolver(
-  resolver: PluginRuntimeContext['resolveIdentityAddress']
-): (wid: string) => Promise<StableIdentityAddressResolution> {
-  if (!resolver) throw new Error('Authoritative identity address service is unavailable.');
-  return async (wid) => {
-    const resolution = await resolver(wid);
-    if (!resolution.identityId) {
-      throw new Error(`Authoritative identity is unavailable for WhatsApp address ${wid}.`);
-    }
-    return resolution as StableIdentityAddressResolution;
-  };
-}
-
-function shouldSaveForEvent(event: PluginParticipantChangeEvent, config: AddressBookSyncConfig): boolean {
-  if (event.action === 'join') {
-    return config.saveOnJoin;
-  }
-  if (event.action === 'add') {
-    return config.saveOnAdd;
-  }
-  if (event.action === 'membership_approved') {
-    return config.saveOnApproval;
-  }
-  return false;
-}
-
-function exemptGroupChatIds(config: AddressBookSyncConfig): Set<string> {
-  return new Set(config.exemptGroupChatIds.map((chatId) => chatId.trim()).filter(Boolean));
-}
-
-function auditSkipped(
-  event: PluginParticipantChangeEvent,
-  _recipient: undefined,
-  reason: string
-): PluginAction {
-  return {
-    type: 'audit.record',
-    action: 'address-book-sync.skipped',
-    targetJson: {
-      pluginId,
-      scopeId: event.scopeId,
-      chatId: event.chatId,
-      eventId: event.eventId,
-      participantAction: event.action
+      const config = parseAddressBookSyncConfig(await context.configFor(event.scopeId, event.actorIdentity?.identityId));
+      const enabledArrival = event.action === 'join' ? config.saveOnJoin
+        : event.action === 'add' ? config.saveOnAdd : event.action === 'membership_approved' && config.saveOnApproval;
+      if (!config.enabled || !enabledArrival || config.exemptGroupChatIds.includes(event.chatId)) return;
+      if (!context.enqueuePluginJob) throw new Error('Durable contact job scheduling is unavailable.');
+      const wids = event.affectedIdentities.filter(person => !event.botIdentityIds.includes(person.identityId)).map(person => person.addressBookWid);
+      if (!wids.length) return;
+      await context.enqueuePluginJob({ jobName: RETRY_JOB, scopeId: event.scopeId, groupId: event.groupId, groupWid: event.chatId,
+        payload: { wids, arrivalAction: event.action }, dedupeKey: `contact-sync:arrival:${event.scopeId}:${event.eventId}`, replaceRetainedTerminalJob: true });
     },
-    metadataJson: { reason }
+    async onMessage(event) {
+      if (event.message.fromMe || event.message.context !== 'group') return;
+      const config = parseAddressBookSyncConfig(await context.configFor(event.scopeId));
+      if (!config.enabled || config.exemptGroupChatIds.includes(event.message.chatId)) return;
+      if (!context.enqueuePluginJob) throw new Error('Durable contact job scheduling is unavailable.');
+      await context.enqueuePluginJob({ jobName: RETRY_JOB, scopeId: event.scopeId, groupWid: event.message.chatId,
+        executionClass: 'maintenance', payload: { wids: [event.actorWid], wake: true },
+        dedupeKey: `contact-sync:message:${event.scopeId}:${event.actorIdentityId}:${Math.floor(Date.now() / 60_000)}` });
+    },
+    async onPluginJob(job) {
+      if (job.jobName === SCAN_JOB) {
+        try { await reconciler.run({ scopeId: job.scopeId, automatic: true }); }
+        finally { await reconciler.scheduleScan(job.scopeId, Date.now() + SCAN_INTERVAL_MS); }
+      } else if (job.jobName === RETRY_JOB) {
+        const payload = job.payload as { identityId?: string; wids?: string[]; arrivalAction?: string; wake?: boolean };
+        if (payload.identityId) await reconciler.retry(job.scopeId, payload.identityId);
+        else if (Array.isArray(payload.wids)) {
+          const config = parseAddressBookSyncConfig(await context.configFor(job.scopeId));
+          const allowed = payload.arrivalAction === 'join' ? config.saveOnJoin
+            : payload.arrivalAction === 'add' ? config.saveOnAdd : payload.arrivalAction === 'membership_approved' && config.saveOnApproval;
+          if (payload.arrivalAction && !allowed) return;
+          await reconciler.run({ scopeId: job.scopeId, participantWids: payload.wids, automatic: true,
+            allowNew: Boolean(payload.arrivalAction), force: payload.wake === true });
+        }
+      }
+    }
   };
 }

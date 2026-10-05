@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "pluginId": "official.address-book-sync",
   "name": "Address Book Sync",
-  "description": "Save unknown arriving group members using push name, username, or phone number, plus a configured suffix.",
+  "description": "Save named members and safely repair plugin-created phone fallback contacts.",
   "kind": "managed_group",
-  "version": "0.2.2",
-  "coreApiRange": "^0.3.2",
+  "version": "0.3.0",
+  "coreApiRange": "^0.3.11",
   "entrypoint": "dist/index.js",
   "messageNamespace": "official.address-book-sync",
   "descriptionKey": "official.address-book-sync.description",
@@ -41,7 +41,9 @@
     ]
   },
   "eventSubscriptions": [
-    "participant.change"
+    "participant.change",
+    "message",
+    "plugin.job"
   ],
   "requiredPermissions": [
     "plugin.configure"
@@ -50,13 +52,16 @@
   "dangerousActions": [
     "contact.saveToAddressBook"
   ],
-  "backgroundJobs": [],
+  "backgroundJobs": [
+    "contact-sync.reconcile",
+    "contact-sync.retry"
+  ],
   "cancellation": {
     "workflows": []
   },
   "dependencies": [],
   "assistant": {
-    "summary": "Automatically saves unknown arriving members using push name, username, or phone number and supports explicit backfill and repair.",
+    "summary": "Automatically save named members, wait for missing names, and repair plugin-created phone fallback contacts.",
     "useCases": [
       "Explain whether unknown joining members will be saved to the address book.",
       "Summarize the configured suffix and event triggers.",
@@ -70,7 +75,7 @@
       "The runtime must provide live group participant, profile-name, and contact lookup helpers."
     ],
     "limitations": [
-      "Automatic saves only consider participant-change events; current participants require an explicit backfill action.",
+      "Members without a display name or username remain pending and are retried automatically.",
       "WhatsApp clients may not reflect app-state contact saves uniformly across devices."
     ]
   },
@@ -81,8 +86,7 @@
       "saveOnAdd",
       "saveOnApproval",
       "suffix",
-      "exemptGroupChatIds",
-      "dedupeTtlSeconds"
+      "exemptGroupChatIds"
     ],
     "controls": [
       {
@@ -195,30 +199,11 @@
         "relatedActionIds": [
           "official.address-book-sync.backfill"
         ]
-      },
-      {
-        "id": "plugin.official.address-book-sync.dedupeTtlSeconds",
-        "path": "dedupeTtlSeconds",
-        "label": "Dedupe TTL",
-        "description": "Seconds to suppress duplicate address-book saves for the same scope, group, and user.",
-        "section": "Address Book Sync",
-        "order": 70,
-        "schema": {
-          "type": "number",
-          "unit": "seconds",
-          "min": 1,
-          "max": 2592000
-        },
-        "ui": {
-          "widget": "duration",
-          "helpText": "Seconds to suppress duplicate address-book saves for the same scope, group, and user."
-        },
-        "relatedActionIds": [
-          "official.address-book-sync.backfill"
-        ]
       }
     ],
-    "internalConfigPaths": []
+    "internalConfigPaths": [
+      "dedupeTtlSeconds"
+    ]
   },
   "externalActions": [
     {

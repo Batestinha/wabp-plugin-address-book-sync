@@ -6,8 +6,8 @@ import { addressBookSyncMessages } from './messages';
 export const addressBookSyncManifest: PluginManifest = {
   pluginId: 'official.address-book-sync',
   kind: 'managed_group',
-  version: '0.2.2',
-  coreApiRange: '^0.3.2',
+  version: '0.3.0',
+  coreApiRange: '^0.3.11',
   messageNamespace: 'official.address-book-sync',
   descriptionKey: 'official.address-book-sync.description',
   defaultMessages: addressBookSyncMessages,
@@ -28,15 +28,15 @@ export const addressBookSyncManifest: PluginManifest = {
     }]
   },
   externalActions: addressBookSyncExternalActions,
-  eventSubscriptions: ['participant.change'],
+  eventSubscriptions: ['participant.change', 'message', 'plugin.job'],
   requiredPermissions: ['plugin.configure'],
   requiredBotCapabilities: [],
   configSchema: addressBookSyncConfigSchema,
   dangerousActions: ['contact.saveToAddressBook'],
-  backgroundJobs: [],
+  backgroundJobs: ['contact-sync.reconcile', 'contact-sync.retry'],
   cancellation: { workflows: [] },
   assistant: {
-    summary: 'Automatically saves unknown arriving members using push name, username, or phone number and supports explicit backfill and repair.',
+    summary: 'Automatically saves unknown arriving members using push name, persisted display name, or username and supports explicit backfill and repair.',
     useCases: [
       'Explain whether unknown joining members will be saved to the address book.',
       'Summarize the configured suffix and event triggers.',
@@ -50,7 +50,7 @@ export const addressBookSyncManifest: PluginManifest = {
       'The runtime must provide live group participant, profile-name, and contact lookup helpers.'
     ],
     limitations: [
-      'Automatic saves only consider participant-change events; current participants require an explicit backfill action.',
+      'Names that are not yet available remain pending and are retried automatically.',
       'WhatsApp clients may not reflect app-state contact saves uniformly across devices.'
     ]
   }

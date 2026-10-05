@@ -13,7 +13,7 @@ export type AddressBookSyncSkipReason =
   | 'duplicate-event'
   | 'profile-name-unavailable';
 
-export type AddressBookSyncNameSource = 'push-name' | 'username' | 'phone-number';
+export type AddressBookSyncNameSource = 'push-name' | 'identity-display-name' | 'username';
 
 export interface AddressBookSyncTarget {
   scopeId: string;
@@ -67,40 +67,33 @@ export async function planAddressBookSync(input: AddressBookSyncPlanInput): Prom
   const actions: PluginAction[] = [];
   const results: AddressBookSyncPlanResult[] = [];
   const recipients = uniqueIdentities(input.targetIdentities);
+  const eligible = [];
+  for (const recipient of recipients) {
+    if (botIdentityIds.has(recipient.identityId)) addSkipped(input, actions, results, recipient, 'self-recipient');
+    else if (await isKnownRecipient(input.runtime, recipient)) addSkipped(input, actions, results, recipient, 'known-contact');
+    else eligible.push(recipient);
+  }
   const [profiles, resolutions] = await Promise.all([
-    input.runtime.getUserProfileNames(recipients.map((recipient) => recipient.addressBookWid)),
-    Promise.all(recipients.map((recipient) => input.runtime.resolveIdentityAddress(recipient.addressBookWid)))
+    input.runtime.getUserProfileNames(eligible.map((recipient) => recipient.addressBookWid)),
+    Promise.all(eligible.map((recipient) => input.runtime.resolveIdentityAddress(recipient.addressBookWid)))
   ]);
   const profilesByWid = new Map(profiles.map((profile) => [normalizeProfileWid(profile.wid), profile]));
   const resolutionsByIdentityId = new Map(
-    recipients.map((recipient, index) => [recipient.identityId, resolutions[index]!])
+    eligible.map((recipient, index) => [recipient.identityId, resolutions[index]!])
   );
 
-  for (const recipient of recipients) {
-    if (botIdentityIds.has(recipient.identityId)) {
-      addSkipped(input, actions, results, recipient, 'self-recipient');
-      continue;
-    }
-    if (await isKnownRecipient(input.runtime, recipient)) {
-      addSkipped(input, actions, results, recipient, 'known-contact');
-      continue;
-    }
+  for (const recipient of eligible) {
 
     const saveWid = preferredSaveWid(recipient);
     const selectedName = selectAddressBookContactName(
       profilesByWid.get(normalizeProfileWid(saveWid)),
-      resolutionsByIdentityId.get(recipient.identityId)?.phoneNumber
+      resolutionsByIdentityId.get(recipient.identityId)?.displayName
     );
     if (!selectedName) {
       addSkipped(input, actions, results, recipient, 'profile-name-unavailable');
       continue;
     }
     const contactName = appendAddressBookSuffix(selectedName.value, input.config.suffix);
-    const duplicate = await isDuplicateSyncAttempt(input, recipient);
-    if (duplicate) {
-      addSkipped(input, actions, results, recipient, 'duplicate-event');
-      continue;
-    }
 
     if (input.dryRun) {
       results.push({
@@ -160,19 +153,6 @@ function addSkipped(
   });
 }
 
-async function isDuplicateSyncAttempt(
-  input: AddressBookSyncPlanInput,
-  recipient: PluginParticipantIdentity
-): Promise<boolean> {
-  const key = saveDedupeKey(input.target, recipient);
-  if (input.dryRun) {
-    const existing = await input.runtime.ephemeralStore.get<number>(key);
-    return existing !== undefined;
-  }
-  const saveAttempt = await input.runtime.ephemeralStore.increment(key, input.config.dedupeTtlSeconds);
-  return saveAttempt !== 1;
-}
-
 function summarize(results: AddressBookSyncPlanResult[]): AddressBookSyncPlan['summary'] {
   const skippedReasons: Record<string, number> = {};
   for (const result of results) {
@@ -202,25 +182,25 @@ function preferredSaveWid(recipient: PluginParticipantIdentity): string {
 
 export function selectAddressBookContactName(
   profile: WhatsAppUserProfileNames | undefined,
-  phoneNumber: string | undefined
+  identityDisplayName: string | undefined
 ): { value: string; source: AddressBookSyncNameSource } | undefined {
   const pushName = cleanProfileValue(profile?.pushName);
   if (pushName) {
     return { value: pushName, source: 'push-name' };
   }
+  const displayName = cleanProfileValue(identityDisplayName);
+  if (displayName) return { value: displayName, source: 'identity-display-name' };
   const username = formatWhatsAppUsername(profile?.username);
   if (username) {
     return { value: username, source: 'username' };
-  }
-  const normalizedPhoneNumber = phoneNumber?.trim();
-  if (normalizedPhoneNumber && /^\d{7,15}$/.test(normalizedPhoneNumber)) {
-    return { value: `+${normalizedPhoneNumber}`, source: 'phone-number' };
   }
   return undefined;
 }
 
 function cleanProfileValue(value: string | undefined): string | undefined {
   const normalized = value?.trim();
+  if (!normalized || /^\+?[\d\s().-]{7,}(?:\s|$)/.test(normalized)
+    || /@(c\.us|s\.whatsapp\.net|lid)\b/i.test(normalized)) return undefined;
   return normalized || undefined;
 }
 
@@ -243,10 +223,6 @@ export function appendAddressBookSuffix(label: string, suffix: string): string {
     return normalizedLabel;
   }
   return `${normalizedLabel} ${normalizedSuffix}`;
-}
-
-function saveDedupeKey(target: AddressBookSyncTarget, recipient: PluginParticipantIdentity): string {
-  return `address-book-sync:save:${target.scopeId}:${target.chatId}:identity:${recipient.identityId}`;
 }
 
 function auditSkipped(
