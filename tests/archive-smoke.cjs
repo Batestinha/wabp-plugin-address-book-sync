@@ -7,7 +7,7 @@ const manifest = JSON.parse(fs.readFileSync(path.join(root, 'wa-plugin.json')));
 const plugin = require(path.join(root, manifest.entrypoint)).default;
 assert.equal(plugin.manifest.pluginId, manifest.pluginId);
 assert.equal(plugin.manifest.version, manifest.version);
-assert.equal(plugin.manifest.coreApiRange, '^0.3.11');
+assert.equal(plugin.manifest.coreApiRange, '^0.3.12');
 assert.equal(typeof plugin.registerHooks, 'function');
 assert.equal(plugin.lifecycle, undefined);
 const pt = JSON.parse(fs.readFileSync(path.join(root, 'locales/pt-PT', manifest.messageNamespace + '.json')));
