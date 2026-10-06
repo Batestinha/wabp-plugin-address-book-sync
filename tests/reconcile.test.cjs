@@ -11,7 +11,7 @@ function harness() {
   const identity = { identityId: 'person', originalWid: wid, canonicalWid: wid, addressBookWid: wid,
     sourceWid: lid, deliveryChatId: lid, mentionWid: lid, phoneNumber: '351900000001',
     phoneWids: [wid], lidWids: [lid], aliases: [wid, lid, '351900000001@s.whatsapp.net'], dedupeKey: 'person' };
-  const state = { name: undefined, pushName: undefined, identityName: undefined, config: { enabled: true, suffix: '(Escalada)' },
+  const state = { name: undefined, firstName: undefined, pushName: undefined, identityName: undefined, config: { enabled: true, suffix: '(Escalada)' },
     members: [{ wid: lid }], receipts: [], fail: false, failProfiles: false, enabled: true, groups: [{ scopeId: 'scope', groupId: 'group', groupWid: 'group@g.us', managementMode: 'MANAGE' }] };
   const context = { pluginId: 'official.address-book-sync', manifest: plugin.manifest,
     configFor: async () => state.config, enabledFor: async () => state.enabled,
@@ -26,10 +26,11 @@ function harness() {
     ephemeralStore: { setIfAbsent: async (key, value) => { if (locks.has(key)) return false; locks.set(key, value); return true; },
       get: async key => locks.get(key), delete: async key => Number(locks.delete(key)) },
     enqueuePluginJob: async job => jobs.push(job),
-    contacts: { inspect: async () => [{ identityId: 'person', wid, contactName: state.name }], readSaveReceipts: async () => state.receipts,
+    contacts: { inspect: async () => [{ identityId: 'person', wid, contactName: state.name, firstName: state.firstName }], readSaveReceipts: async () => state.receipts,
       save: async input => { writes.push(input); if (state.fail) throw Error('app-state conflict');
         if ((state.name ?? null) !== input.expectedName) return { status: state.name === input.contactName ? 'unchanged' : 'precondition-failed' };
-        state.name = input.contactName; return { status: 'saved', contactName: state.name }; } }
+        if (input.expectedFirstName !== undefined && input.expectedFirstName !== state.firstName) return { status: 'precondition-failed' };
+        state.name = input.contactName; state.firstName = input.contactName.split(/\s/u)[0]; return { status: 'saved', contactName: state.name }; } }
   };
   const reconciler = createContactReconciler(context, () => time);
   const run = input => reconciler.run({ scopeId: 'scope', ...input });
@@ -53,6 +54,60 @@ test('legacy receipts work and manual contact edits are preserved', async () => 
   const h = harness(); h.state.receipts = [h.receipt('displayName')]; h.state.name = 'My friend'; h.state.pushName = 'Fixture Person';
   assert.equal((await h.run()).skipped, 1); assert.equal(h.writes.length, 0);
   h.state.name = '+351900000001 (Escalada)'; assert.equal((await h.run()).repaired, 1);
+});
+
+function duplicatedNameFixture(field = 'contactName') {
+  const h = harness();
+  const savedName = 'Fixture Person (Escalada)';
+  h.state.name = `${savedName} Person (Escalada)`; h.state.firstName = savedName;
+  const receipt = h.receipt(field); receipt.targetJson.action[field] = savedName;
+  h.state.receipts = [receipt];
+  return { ...h, savedName };
+}
+
+test('repairs only the recorded name with a duplicated surname and preserves its original suffix', async () => {
+  for (const field of ['contactName', 'displayName']) {
+    const h = duplicatedNameFixture(field);
+    h.state.pushName = 'A changed profile name'; h.state.config.suffix = '(Changed suffix)';
+    h.context.getUserProfileNames = async () => { throw Error('This repair must use its original save receipt'); };
+    const preview = await h.run({ dryRun: true });
+    assert.equal(preview.wouldRepair, 1); assert.equal(preview.results[0].contactName, h.savedName);
+    assert.equal(h.writes.length, 0); assert.equal(h.rows.size, 0); assert.equal(h.jobs.length, 0);
+    const expectedName = h.state.name;
+    assert.equal((await h.run()).repaired, 1);
+    assert.equal(h.state.name, h.savedName); assert.equal(h.state.firstName, 'Fixture');
+    assert.equal(h.writes[0].expectedName, expectedName); assert.equal(h.writes[0].expectedFirstName, h.savedName);
+    assert.equal(h.writes[0].reason, 'official.address-book-sync.repair-duplicated-name');
+    assert.equal((await h.run()).repaired, 0); assert.equal(h.writes.length, 1);
+  }
+});
+
+test('does not infer duplicate-name repairs without all receipt and structured-field evidence', async () => {
+  for (const change of [
+    h => { h.state.receipts = []; },
+    h => { h.state.firstName = undefined; },
+    h => { h.state.firstName = 'Fixture'; },
+    h => { h.state.name = 'Fixture Person (Escalada) My friend'; },
+    h => { h.state.receipts[0].targetJson.pluginId = 'another-plugin'; }
+  ]) {
+    const h = duplicatedNameFixture(); change(h);
+    assert.equal((await h.run()).skipped, 1); assert.equal(h.writes.length, 0);
+  }
+  for (const mode of ['unknown-members', 'repair-phone-fallbacks']) {
+    const h = duplicatedNameFixture(); assert.equal((await h.run({ mode })).skipped, 1); assert.equal(h.writes.length, 0);
+  }
+});
+
+test('duplicate-name repair retains failed writes and respects a later first-name edit', async () => {
+  const h = duplicatedNameFixture(); h.state.fail = true;
+  assert.equal((await h.run()).retryScheduled, 1); assert.equal(h.rows.size, 1);
+  h.state.fail = false; h.advance(60_000);
+  assert.equal((await h.reconciler.retry('scope', 'person')).repaired, 1); assert.equal(h.rows.size, 0);
+  const edited = duplicatedNameFixture(), save = edited.context.contacts.save;
+  edited.context.contacts.save = async input => { edited.state.firstName = 'Manual first name'; return save(input); };
+  const oldFullName = edited.state.name;
+  assert.equal((await edited.run()).skipped, 1); assert.equal(edited.state.firstName, 'Manual first name');
+  assert.equal(edited.state.name, oldFullName);
 });
 
 test('waits without saving a phone fallback and resumes after the name arrives', async () => {

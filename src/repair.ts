@@ -187,6 +187,16 @@ export function historicalPhoneFallbackSuffix(contactName: string, wid: string):
   return undefined;
 }
 
+/** Recognize only the exact old full-label-as-first-name corruption. */
+export function historicalDuplicatedNameRepair(savedName: string, wid: string,
+  contact: { contactName?: string | undefined; firstName?: string | undefined } | undefined): string | undefined {
+  if (!contact || contact.firstName !== savedName || historicalPhoneFallbackSuffix(savedName, wid) !== undefined) return;
+  const firstSeparator = savedName.search(/\s/u);
+  if (firstSeparator <= 0) return;
+  const repeatedTail = savedName.slice(firstSeparator).trim();
+  if (repeatedTail && contact.contactName === `${savedName} ${repeatedTail}`) return savedName;
+}
+
 export function normalizeAddressBookWid(wid: string): string {
   return wid.trim()
     .replace(/^([^:@]+):\d+@(lid|c\.us|s\.whatsapp\.net)$/i, '$1@$2')

@@ -3,7 +3,7 @@ import type { StableIdentityAddressResolution } from '@wabs/plugin-sdk/identity'
 import type { WhatsAppUserProfileNames } from '@wabs/plugin-sdk/transport';
 import { parseAddressBookSyncConfig } from './config';
 import { ADDRESS_BOOK_SYNC_PLUGIN_ID, appendAddressBookSuffix, selectAddressBookContactName } from './sync';
-import { historicalAddressBookContactSaveAuditSchema, historicalPhoneFallbackSuffix, normalizeAddressBookWid } from './repair';
+import { historicalAddressBookContactSaveAuditSchema, historicalPhoneFallbackSuffix, historicalDuplicatedNameRepair, normalizeAddressBookWid } from './repair';
 
 export const SCAN_JOB = 'contact-sync.reconcile';
 export const RETRY_JOB = 'contact-sync.retry';
@@ -26,12 +26,14 @@ export interface ContactResult {
   status: 'saved' | 'repaired' | 'would_save' | 'would_repair' | 'pending-name' | 'retry-scheduled' | 'skipped' | 'failed';
   reason?: string; contactName?: string; nameSource?: string; error?: string;
 }
+type ContactRepair = { kind: 'phone-fallback'; oldName: string; suffix: string }
+  | { kind: 'duplicated-name'; oldName: string; contactName: string; firstName: string };
 
 export function createContactReconciler(context: PluginHookContext, now = Date.now) {
   function runtime() {
     const { contacts, dataStore, resolveIdentityAddress, getGroupParticipants, coveredGroupsForScope, enqueuePluginJob, getUserProfileNames } = context;
     if (!contacts || !dataStore || !resolveIdentityAddress || !getGroupParticipants || !coveredGroupsForScope || !enqueuePluginJob || !getUserProfileNames) {
-      throw new Error('Address Book Sync requires the host contact reconciliation capabilities (core API 0.3.11).');
+      throw new Error('Address Book Sync requires the host contact reconciliation capabilities (core API 0.3.12).');
     }
     return { contacts, dataStore, resolve: resolveIdentityAddress, getGroupParticipants, coveredGroupsForScope, enqueuePluginJob, getUserProfileNames };
   }
@@ -121,18 +123,23 @@ export function createContactReconciler(context: PluginHookContext, now = Date.n
       snapshots.push(...await rt.contacts.inspect(input.scopeId, identities.slice(offset, offset + 512).map(identity => identity.addressBookWid)));
     }
     const currentNames = new Map(snapshots.map(contact => [contact.identityId, contact.contactName]));
-    const fallbacks = new Map<string, { oldName: string; suffix: string }>();
+    const snapshotsByIdentity = new Map(snapshots.map(contact => [contact.identityId, contact]));
+    const repairs = new Map<string, ContactRepair>();
     if (input.mode !== 'unknown-members') {
       for (const row of await rt.contacts.readSaveReceipts(input.scopeId)) {
         const parsed = historicalAddressBookContactSaveAuditSchema.safeParse(row.targetJson);
         if (!parsed.success) continue;
         const action = parsed.data.action;
         const identity = await resolve(action.wid);
-        if (!members.has(identity.identityId) || fallbacks.has(identity.identityId)) continue;
+        if (!members.has(identity.identityId) || repairs.has(identity.identityId)) continue;
         const oldName = (action.contactName ?? action.displayName)!;
         const suffix = historicalPhoneFallbackSuffix(oldName, identity.addressBookWid);
         if (suffix !== undefined && currentNames.get(identity.identityId) === oldName) {
-          fallbacks.set(identity.identityId, { oldName, suffix });
+          repairs.set(identity.identityId, { kind: 'phone-fallback', oldName, suffix });
+        } else if (input.mode !== 'repair-phone-fallbacks') {
+          const snapshot = snapshotsByIdentity.get(identity.identityId);
+          const restored = historicalDuplicatedNameRepair(oldName, identity.addressBookWid, snapshot);
+          if (restored) repairs.set(identity.identityId, { kind: 'duplicated-name', oldName: snapshot!.contactName!, contactName: restored, firstName: snapshot!.firstName! });
         }
       }
     }
@@ -141,36 +148,39 @@ export function createContactReconciler(context: PluginHookContext, now = Date.n
       const { identity, group } = member;
       const pending = await rt.dataStore.get<PendingContact>(PREFIX + identity.identityId, input.scopeId);
       const current = currentNames.get(identity.identityId);
-      const fallback = fallbacks.get(identity.identityId);
+      const repair = repairs.get(identity.identityId);
       const base = { identityId: identity.identityId, wid: identity.addressBookWid, chatId: group.groupWid };
       if (pending?.intendedName && current === pending.intendedName) {
         if (!input.dryRun) await withIdentityLease(input.scopeId, identity.identityId, () => rt.dataStore.delete(PREFIX + identity.identityId, input.scopeId));
         results.push({ ...base, status: input.dryRun ? 'skipped' : pending.expectedName ? 'repaired' : 'saved', contactName: current });
-      } else if (current && !fallback || !current && input.mode === 'repair-phone-fallbacks') {
+      } else if (current && !repair || !current && input.mode === 'repair-phone-fallbacks') {
         if (!input.dryRun && pending) await withIdentityLease(input.scopeId, identity.identityId, () => rt.dataStore.delete(PREFIX + identity.identityId, input.scopeId));
         results.push({ ...base, status: 'skipped', reason: current ? 'known-contact' : 'contact-not-found' });
-      } else if (input.automatic && !fallback && !pending && !input.allowNew
+      } else if (input.automatic && !repair && !pending && !input.allowNew
         && !(config.saveOnJoin && config.saveOnAdd && config.saveOnApproval)) {
         results.push({ ...base, status: 'skipped', reason: 'arrival-trigger-required' });
       } else if (input.automatic && pending && !input.force && !input.allowNew && pending.nextAttemptAt > now()) {
         results.push({ ...base, status: pending.status === 'pending-name' ? 'pending-name' : 'retry-scheduled' });
-      } else candidates.push({ ...member, pending, fallback, base });
+      } else candidates.push({ ...member, pending, repair, base });
     }
     const profiles: WhatsAppUserProfileNames[] = [];
     let profileError: string | undefined;
-    for (let offset = 0; offset < candidates.length; offset += 512) {
-      try { profiles.push(...await rt.getUserProfileNames(candidates.slice(offset, offset + 512).map(candidate => candidate.identity.addressBookWid))); }
+    const needProfiles = candidates.filter(candidate => candidate.repair?.kind !== 'duplicated-name');
+    for (let offset = 0; offset < needProfiles.length; offset += 512) {
+      try { profiles.push(...await rt.getUserProfileNames(needProfiles.slice(offset, offset + 512).map(candidate => candidate.identity.addressBookWid))); }
       catch (error) { profileError = errorMessage(error); }
     }
     const byWid = new Map(profiles.map(profile => [normalizeAddressBookWid(profile.wid), profile]));
     for (const candidate of candidates) {
       input.signal?.throwIfAborted();
-      const { identity, group, fallback, base } = candidate;
+      const { identity, group, repair, base } = candidate;
       const selectedName = selectAddressBookContactName(byWid.get(normalizeAddressBookWid(identity.addressBookWid)), identity.displayName);
-      const contactName = selectedName ? appendAddressBookSuffix(selectedName.value, fallback?.suffix ?? config.suffix) : undefined;
+      const contactName = repair?.kind === 'duplicated-name' ? repair.contactName
+        : selectedName ? appendAddressBookSuffix(selectedName.value, repair?.suffix ?? config.suffix) : undefined;
+      const nameSource = repair?.kind === 'duplicated-name' ? 'save-receipt' : selectedName?.source;
       if (input.dryRun) {
-        results.push({ ...base, status: contactName ? (fallback ? 'would_repair' : 'would_save') : 'pending-name',
-          ...(contactName ? { contactName, nameSource: selectedName!.source } : {}) });
+        results.push({ ...base, status: contactName ? (repair ? 'would_repair' : 'would_save') : 'pending-name',
+          ...(contactName ? { contactName, nameSource: nameSource! } : {}) });
         continue;
       }
       const processed = await withIdentityLease(input.scopeId, identity.identityId, async () => {
@@ -178,7 +188,7 @@ export function createContactReconciler(context: PluginHookContext, now = Date.n
         // Persist before mutation, so a crash or ambiguous response can be reconciled.
         const work: PendingContact = { identityId: identity.identityId, wid: identity.addressBookWid, groupWid: group.groupWid,
           attempts: (pending?.attempts ?? 0) + 1, nextAttemptAt: now() + RETRY_DELAYS[Math.min(pending?.attempts ?? 0, RETRY_DELAYS.length - 1)]!,
-          status: contactName ? 'saving' : 'pending-name', ...(contactName ? { intendedName: contactName, expectedName: fallback?.oldName ?? null } : {}) };
+          status: contactName ? 'saving' : 'pending-name', ...(contactName ? { intendedName: contactName, expectedName: repair?.oldName ?? null } : {}) };
         await rt.dataStore.set(PREFIX + identity.identityId, work, input.scopeId);
         if (!contactName) {
           if (profileError) {
@@ -195,10 +205,12 @@ export function createContactReconciler(context: PluginHookContext, now = Date.n
             results.push({ ...base, status: 'skipped', reason: 'configuration-changed' }); return true;
           }
           const saved = await rt.contacts.save({ scopeId: input.scopeId, groupWid: group.groupWid, wid: identity.addressBookWid,
-            contactName, expectedName: fallback?.oldName ?? null, reason: fallback ? `${ADDRESS_BOOK_SYNC_PLUGIN_ID}.repair-phone-fallback` : ADDRESS_BOOK_SYNC_PLUGIN_ID });
+            contactName, expectedName: repair?.oldName ?? null,
+            ...(repair?.kind === 'duplicated-name' ? { expectedFirstName: repair.firstName } : {}),
+            reason: repair ? `${ADDRESS_BOOK_SYNC_PLUGIN_ID}.repair-${repair.kind}` : ADDRESS_BOOK_SYNC_PLUGIN_ID });
           await rt.dataStore.delete(PREFIX + identity.identityId, input.scopeId);
-          results.push({ ...base, status: saved.status === 'precondition-failed' ? 'skipped' : fallback ? 'repaired' : 'saved',
-            ...(saved.status === 'precondition-failed' ? { reason: 'contact-name-changed' } : { contactName, nameSource: selectedName!.source }) });
+          results.push({ ...base, status: saved.status === 'precondition-failed' ? 'skipped' : repair ? 'repaired' : 'saved',
+            ...(saved.status === 'precondition-failed' ? { reason: 'contact-name-changed' } : { contactName, nameSource: nameSource! }) });
         } catch (error) {
           work.status = 'retry-scheduled'; work.error = errorMessage(error);
           await rt.dataStore.set(PREFIX + identity.identityId, work, input.scopeId);

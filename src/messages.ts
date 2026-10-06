@@ -6,5 +6,5 @@ export const addressBookSyncMessages: MessageCatalog = {
   'official.address-book-sync.help.feature.summary': 'Save unknown arriving members as contacts, waiting until a display name or username is available.',
   'official.address-book-sync.help.sync.title': 'Sync arriving members',
   'official.address-book-sync.help.sync.summary': 'Choose the best available profile name and apply the configured suffix when eligible members arrive.',
-  'official.address-book-sync.help.sync.instruction': 'This feature runs automatically when enabled; administrators configure triggers and can reconcile members and automatically repair unchanged plugin-created phone fallback names from the operator console.'
+  'official.address-book-sync.help.sync.instruction': 'This feature runs automatically when enabled, waits for missing names, and repairs recorded plugin-created phone fallbacks or duplicated surnames while preserving manual edits. Administrators can reconcile members from the operator console.'
 };

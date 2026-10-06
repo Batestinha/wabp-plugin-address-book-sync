@@ -4,5 +4,5 @@
   "official.address-book-sync.help.feature.summary": "Guardar membros como contactos quando o nome de apresentação ou nome de utilizador estiver disponível.",
   "official.address-book-sync.help.sync.title": "Sincronizar membros que chegam",
   "official.address-book-sync.help.sync.summary": "Escolhe o melhor nome de perfil disponível e aplica o sufixo configurado quando membros elegíveis chegam.",
-  "official.address-book-sync.help.sync.instruction": "A sincronização funciona automaticamente quando está ativa, aguarda nomes em falta e corrige nomes com números de telefone criados pelo plugin, preservando alterações manuais. Os administradores podem reconciliar os membros na consola."
+  "official.address-book-sync.help.sync.instruction": "A sincronização funciona automaticamente quando está ativa, aguarda nomes em falta e corrige nomes com números de telefone ou apelidos duplicados comprovadamente criados pelo plugin, preservando alterações manuais. Os administradores podem reconciliar os membros na consola."
 }
