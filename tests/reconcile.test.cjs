@@ -195,6 +195,31 @@ test('preview preserves pending state and never schedules work', async () => {
   assert.equal(JSON.stringify([...h.rows]), before); assert.equal(h.jobs.length, jobs); assert.equal(h.writes.length, 0);
 });
 
+test('unknown-member backfill preserves pending repairs until a name becomes available', async () => {
+  const h = harness();
+  h.state.name = '+351900000001 (Escalada)'; h.state.receipts = [h.receipt()];
+  assert.equal((await h.run()).pendingNames, 1);
+  const before = JSON.stringify([...h.rows]), jobs = h.jobs.length;
+  assert.equal((await h.run({ mode: 'unknown-members' })).skipped, 1);
+  assert.equal(JSON.stringify([...h.rows]), before);
+  assert.equal(h.jobs.length, jobs); assert.equal(h.writes.length, 0);
+  h.state.pushName = 'Fixture Person'; h.advance(60_000);
+  assert.equal((await h.reconciler.retry('scope', 'person')).repaired, 1);
+  assert.equal(h.rows.size, 0);
+});
+
+test('repair-only backfill preserves eligible arrival retries when catch-up discovery is disabled', async () => {
+  const h = harness(); h.state.config.saveOnAdd = false;
+  assert.equal((await h.run({ automatic: true, allowNew: true, participantWids: [h.wid] })).pendingNames, 1);
+  const before = JSON.stringify([...h.rows]), jobs = h.jobs.length;
+  assert.equal((await h.run({ mode: 'repair-phone-fallbacks' })).skipped, 1);
+  assert.equal(JSON.stringify([...h.rows]), before);
+  assert.equal(h.jobs.length, jobs); assert.equal(h.writes.length, 0);
+  h.state.pushName = 'Fixture Person'; h.advance(60_000);
+  assert.equal((await h.reconciler.retry('scope', 'person')).saved, 1);
+  assert.equal(h.rows.size, 0);
+});
+
 test('disabled arrival types cannot create work through catch-up with partial trigger settings', async () => {
   const h = harness(); h.state.pushName = 'Fixture Person'; h.state.config.saveOnJoin = false;
   assert.equal((await h.run({ automatic: true })).skipped, 1); assert.equal(h.writes.length, 0);

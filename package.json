@@ -1,6 +1,6 @@
 {
   "name": "@wabs/plugin-address-book-sync",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "Save named members and safely repair plugin-created phone fallback contacts.",
   "license": "MIT",
   "private": true,
