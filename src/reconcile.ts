@@ -154,7 +154,11 @@ export function createContactReconciler(context: PluginHookContext, now = Date.n
         if (!input.dryRun) await withIdentityLease(input.scopeId, identity.identityId, () => rt.dataStore.delete(PREFIX + identity.identityId, input.scopeId));
         results.push({ ...base, status: input.dryRun ? 'skipped' : pending.expectedName ? 'repaired' : 'saved', contactName: current });
       } else if (current && !repair || !current && input.mode === 'repair-phone-fallbacks') {
-        if (!input.dryRun && pending) await withIdentityLease(input.scopeId, identity.identityId, () => rt.dataStore.delete(PREFIX + identity.identityId, input.scopeId));
+        // A restricted backfill skips work outside its mode; it does not cancel
+        // the durable save/repair retries owned by the full reconciliation pass.
+        if (!input.dryRun && pending && (!input.mode || input.mode === 'sync-members')) {
+          await withIdentityLease(input.scopeId, identity.identityId, () => rt.dataStore.delete(PREFIX + identity.identityId, input.scopeId));
+        }
         results.push({ ...base, status: 'skipped', reason: current ? 'known-contact' : 'contact-not-found' });
       } else if (input.automatic && !repair && !pending && !input.allowNew
         && !(config.saveOnJoin && config.saveOnAdd && config.saveOnApproval)) {
