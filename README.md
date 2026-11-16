@@ -19,3 +19,13 @@ The default backfill mode, `sync-members`, previews both missing contacts and ol
 Default reconciliation also repairs the exact historical duplicated-surname pattern: the saved first-name field must equal a successful plugin receipt, and the full name must be that recorded label followed by its surname/suffix a second time. Both current fields are checked again before writing. The original receipt label is restored, including its historical suffix. Other edits and legacy backfill modes remain unchanged.
 
 Manual backfill preserves pending work outside the selected mode. Saving unknown members does not cancel queued contact repairs, and repairing phone fallbacks does not cancel queued new-contact saves. Those retries retain their backoff and resume when a usable name becomes available.
+
+## Command interaction contract
+
+This release requires WABP core API 0.4 and the matching plugin SDK. Commands
+declare invocation eligibility and the audience and length of their conversation
+through `interactionPolicy`; plugins without commands retain an empty command
+list. The host owns group-to-PM notices, the two-question allowance for brief
+clarification, and routing across assistant execution and recovered flows. Personal
+guided workflows stay private, with domain publications delivered through their
+existing authorized group publication paths.
