@@ -6,9 +6,9 @@
     "name": "Batestinha",
     "url": "https://github.com/Batestinha"
   },
-  "description": "Save named members and safely repair plugin-created phone fallback contacts.",
+  "description": "Saves group members to the bot’s WhatsApp contacts when it learns their names. Retries pending contacts and can repair phone-number labels or duplicate names it previously saved.",
   "kind": "managed_group",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "coreApiRange": "^0.3.12",
   "entrypoint": "dist/index.js",
   "messageNamespace": "official.address-book-sync",

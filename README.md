@@ -1,5 +1,7 @@
 # Address Book Sync
 
+Saves group members to the bot’s WhatsApp contacts when it learns their names. Retries pending contacts and can repair phone-number labels or duplicate names it previously saved.
+
 Save unknown arriving group members using their learned WhatsApp push name, persisted identity display name, or username, plus a configured suffix. If none is available, wait for a name instead of saving a phone-number label.
 
 Standalone WABS package `official.address-book-sync` version `0.3.6`, requiring WABP core API `^0.3.12`. The archive includes its runtime dependencies and Portuguese translations. WABP owns scope configuration, enabled state, identity resolution, durable jobs, plugin data, and authorized conditional contact writes.
