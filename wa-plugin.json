@@ -8,8 +8,8 @@
   },
   "description": "Saves group members to the bot’s WhatsApp contacts when it learns their names. Retries pending contacts and can repair phone-number labels or duplicate names it previously saved.",
   "kind": "managed_group",
-  "version": "0.3.8",
-  "coreApiRange": "^0.3.31",
+  "version": "0.3.9",
+  "coreApiRange": "^0.3.34",
   "entrypoint": "dist/index.js",
   "messageNamespace": "official.address-book-sync",
   "descriptionKey": "official.address-book-sync.description",
@@ -221,5 +221,7 @@
       "scope": "account",
       "timeoutMs": 120000
     }
-  ]
+  ],
+  "operationCatalogVersion": 1,
+  "memberSubscriptions": []
 }

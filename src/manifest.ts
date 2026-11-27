@@ -7,11 +7,12 @@ const { dependencies, integrations } = require('../wa-plugin.json');
 const relationships = { dependencies, integrations };
 
 export const addressBookSyncManifest: PluginManifest = {
+  ...{ operationCatalogVersion: require('../wa-plugin.json').operationCatalogVersion, memberSubscriptions: require('../wa-plugin.json').memberSubscriptions },
   pluginId: 'official.address-book-sync',
   kind: 'managed_group',
   ...relationships,
-  version: '0.3.8',
-  coreApiRange: '^0.3.31',
+  version: '0.3.9',
+  coreApiRange: '^0.3.34',
   messageNamespace: 'official.address-book-sync',
   descriptionKey: 'official.address-book-sync.description',
   defaultMessages: addressBookSyncMessages,
