@@ -11,7 +11,7 @@ assert.ok(Array.isArray(manifest.dependencies));
 assert.ok(Array.isArray(manifest.integrations));
 assert.deepEqual(plugin.manifest.dependencies, manifest.dependencies);
 assert.deepEqual(plugin.manifest.integrations, manifest.integrations);
-assert.equal(plugin.manifest.coreApiRange, '^0.3.31');
+assert.equal(plugin.manifest.coreApiRange, '^0.3.34');
 assert.equal(typeof plugin.registerHooks, 'function');
 assert.equal(plugin.lifecycle, undefined);
 const pt = JSON.parse(fs.readFileSync(path.join(root, 'locales/pt-PT', manifest.messageNamespace + '.json')));
