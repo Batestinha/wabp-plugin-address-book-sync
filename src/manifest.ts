@@ -11,7 +11,7 @@ export const addressBookSyncManifest: PluginManifest = {
   kind: 'managed_group',
   ...relationships,
   version: '0.3.8',
-  coreApiRange: '^0.3.12',
+  coreApiRange: '^0.3.31',
   messageNamespace: 'official.address-book-sync',
   descriptionKey: 'official.address-book-sync.description',
   defaultMessages: addressBookSyncMessages,
