@@ -8,7 +8,7 @@
   },
   "description": "Saves group members to the bot’s WhatsApp contacts when it learns their names. Retries pending contacts and can repair phone-number labels or duplicate names it previously saved.",
   "kind": "managed_group",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "coreApiRange": "^0.3.12",
   "entrypoint": "dist/index.js",
   "messageNamespace": "official.address-book-sync",
@@ -64,6 +64,7 @@
     "workflows": []
   },
   "dependencies": [],
+  "integrations": [],
   "assistant": {
     "summary": "Automatically saves unknown arriving members using push name, persisted display name, or username and supports explicit backfill and repair.",
     "useCases": [

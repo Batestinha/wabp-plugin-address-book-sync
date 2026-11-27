@@ -3,10 +3,14 @@ import type { PluginManifest } from '@wabs/plugin-sdk/manifest';
 import { addressBookSyncConfigSchema } from './config';
 import { addressBookSyncMessages } from './messages';
 
+const { dependencies, integrations } = require('../wa-plugin.json');
+const relationships = { dependencies, integrations };
+
 export const addressBookSyncManifest: PluginManifest = {
   pluginId: 'official.address-book-sync',
   kind: 'managed_group',
-  version: '0.3.7',
+  ...relationships,
+  version: '0.3.8',
   coreApiRange: '^0.3.12',
   messageNamespace: 'official.address-book-sync',
   descriptionKey: 'official.address-book-sync.description',
